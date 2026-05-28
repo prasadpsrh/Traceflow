@@ -231,3 +231,87 @@ pub fn default_output_path(root: &Path, title: &str, ext: &str) -> PathBuf {
         .collect();
     root.join(format!("{safe}.{ext}"))
 }
+
+#[cfg(test)]
+mod smoke_tests {
+    use super::*;
+    use crate::config::ProjectConfig;
+    use crate::events::{chain::verify_chain, log::read_all};
+
+    /// Find the most-recently modified session directory under ~/Documents/Traceflow/sessions.
+    fn latest_session_dir() -> Option<std::path::PathBuf> {
+        let sessions = dirs::document_dir()?.join("Traceflow").join("sessions");
+        let mut entries: Vec<_> = std::fs::read_dir(&sessions)
+            .ok()?
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .collect();
+        entries.sort_by_key(|e| {
+            e.metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        });
+        entries.last().map(|e| e.path())
+    }
+
+    #[test]
+    fn chain_integrity_on_latest_session() {
+        let dir = match latest_session_dir() {
+            Some(d) => d,
+            None => {
+                eprintln!("SKIP: no session directory found");
+                return;
+            }
+        };
+        let log_path = dir.join("events.ndjson");
+        assert!(log_path.exists(), "events.ndjson missing in {}", dir.display());
+
+        let records = read_all(&log_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", log_path.display()));
+        assert!(!records.is_empty(), "event log is empty");
+
+        let n = verify_chain(records.iter())
+            .unwrap_or_else(|e| panic!("chain broken: {e}"));
+        eprintln!("✅ chain intact — {n} events verified in {}", dir.display());
+    }
+
+    #[test]
+    fn all_export_formats_from_latest_session() {
+        let dir = match latest_session_dir() {
+            Some(d) => d,
+            None => {
+                eprintln!("SKIP: no session directory found");
+                return;
+            }
+        };
+        let log_path = dir.join("events.ndjson");
+        let frames_dir = dir.join("frames");
+        if !log_path.exists() {
+            eprintln!("SKIP: no events.ndjson");
+            return;
+        }
+
+        let cfg = ProjectConfig::default();
+        let out_dir = std::env::temp_dir().join("traceflow-smoke-exports");
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        let formats = ["docx", "md", "html", "json"];
+        for ext in &formats {
+            let out = out_dir.join(format!("smoke-export.{ext}"));
+            let req = RenderRequest {
+                events_log: log_path.clone(),
+                frames_dir: frames_dir.clone(),
+                output_path: out.clone(),
+                title: "Smoke Test Export".to_string(),
+                author: Some("smoke-test".to_string()),
+            };
+            render_to_file(&req, &cfg)
+                .unwrap_or_else(|e| panic!("export to .{ext} failed: {e}"));
+
+            assert!(out.exists(), ".{ext} output file not created");
+            let size = std::fs::metadata(&out).unwrap().len();
+            assert!(size > 0, ".{ext} output is empty");
+            eprintln!("✅ .{ext} → {} bytes at {}", size, out.display());
+        }
+    }
+}

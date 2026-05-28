@@ -9,9 +9,13 @@ mod commands;
 mod config;
 mod document;
 mod events;
+mod ocr;
 mod privacy;
 mod rules;
 mod state;
+
+#[cfg(test)]
+mod integration_tests;
 
 use state::AppState;
 
@@ -41,6 +45,8 @@ pub fn run() {
             commands::update_settings,
             commands::get_config,
             commands::verify_session_chain,
+            commands::list_sessions,
+            commands::load_session,
         ])
         .setup(|app| {
             log::info!("Traceflow v{} starting", env!("CARGO_PKG_VERSION"));

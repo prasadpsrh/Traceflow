@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter};
 pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> {
     log::info!("capture loop started");
 
-    let (poll_fps, change_threshold, stability_frames, ai_on, lang) = {
+    let (poll_fps, change_threshold, stability_frames, ai_on, ocr_on, keep_all, lang, monitor_idx) = {
         let guard = state.lock().await;
         let s = &guard.config.capture;
         (
@@ -31,7 +31,10 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
             s.change_threshold,
             s.stability_frames,
             s.ai_describe,
+            s.redact_pii,
+            s.keep_all_frames,
             s.language.clone(),
+            s.monitor_index as usize,
         )
     };
 
@@ -52,7 +55,7 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
             }
         }
 
-        let frame = match grab_frame(0).await {
+        let frame = match grab_frame(monitor_idx).await {
             Ok(f) => f,
             Err(e) => {
                 log::warn!("frame grab failed: {e}");
@@ -82,7 +85,7 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
                 stable_streak += 1;
                 if stable_streak >= stability_frames {
                     let (_, cand_frame) = candidate.take().unwrap();
-                    promote_step(&state, &app, cand_frame.clone(), next_index, ai_on, &lang)
+                    promote_step(&state, &app, cand_frame.clone(), next_index, ai_on, ocr_on, &lang)
                         .await?;
                     next_index += 1;
                     reference = Some(diff::fingerprint(&cand_frame));
@@ -93,7 +96,7 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
                 // Promote the in-flight candidate rather than silently dropping
                 // it — this is what prevents fast navigation losing screens.
                 let (old_fp, old_frame) = candidate.take().unwrap();
-                promote_step(&state, &app, old_frame.clone(), next_index, ai_on, &lang)
+                promote_step(&state, &app, old_frame.clone(), next_index, ai_on, ocr_on, &lang)
                     .await?;
                 next_index += 1;
                 reference = Some(old_fp);
@@ -111,6 +114,33 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
             if score >= change_threshold {
                 candidate = Some((fp, frame));
                 stable_streak = 0;
+            } else if keep_all && score > 0.001 {
+                // Forensic mode: persist every sampled frame that differs even
+                // slightly from the reference, even though it's below the
+                // promotion threshold.  Costs disk space; enables full replay.
+                let frame_clone = frame.clone();
+                let score_copy = score;
+                let state_clone = state.clone();
+                tokio::spawn(async move {
+                    let mut png = Vec::new();
+                    if frame_clone
+                        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                        .is_ok()
+                    {
+                        let hash = hex::encode(sha2::Sha256::digest(&png));
+                        let guard = state_clone.lock().await;
+                        if let Some(active) = &guard.active {
+                            let path = active.frames_dir.join(format!("{hash}.png"));
+                            if !path.exists() {
+                                let _ = std::fs::write(&path, &png);
+                            }
+                            let _ = active.log.append(EventKind::FrameSampled {
+                                frame_hash: Some(hash),
+                                diff_score: score_copy,
+                            });
+                        }
+                    }
+                });
             }
         }
 
@@ -130,9 +160,44 @@ async fn promote_step(
     frame: RgbaImage,
     index: usize,
     ai_on: bool,
+    ocr_on: bool,
     lang: &str,
 ) -> Result<()> {
-    // 1. Encode to PNG in memory
+    // ── 1. OCR + PII redaction ────────────────────────────────────────────
+    // Must happen BEFORE encoding/hashing so the saved PNG is the redacted
+    // version. The plain word texts are evaluated in-process and never written
+    // to disk; only text_hash values reach the event log.
+    let (win_title, win_app) = active_window_info();
+
+    let (frame, ocr_regions, redaction_hits) = if ocr_on {
+        let rule_engine = {
+            let guard = state.lock().await;
+            guard.rule_engine.clone()
+        };
+        let lang_str = lang.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let text_regions =
+                crate::ocr::run_ocr_with_text(&frame, &lang_str).unwrap_or_default();
+
+            let mut redacted = frame;
+            let hits = if let Some(engine) = &rule_engine {
+                crate::privacy::redact::apply_redactions(&mut redacted, &text_regions, engine)
+            } else {
+                vec![]
+            };
+
+            let regions = text_regions.into_iter().map(|(_, r)| r).collect::<Vec<_>>();
+            (redacted, regions, hits)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("OCR/redaction task panicked: {e:?}"))?
+    } else {
+        (frame, vec![], vec![])
+    };
+
+    // ── 2. Encode the (possibly redacted) frame ───────────────────────────
+    let (w, h) = (frame.width(), frame.height());
     let mut png_bytes: Vec<u8> = Vec::new();
     {
         let mut cursor = std::io::Cursor::new(&mut png_bytes);
@@ -140,19 +205,16 @@ async fn promote_step(
             .write_to(&mut cursor, image::ImageFormat::Png)
             .context("encoding PNG")?;
     }
-
-    // 2. Content-address: sha256 of bytes → filename
     let frame_hash = hex::encode(Sha256::digest(&png_bytes));
 
-    // 3. Save to frames/{hash}.png, dedup-safe
-    let (log, frames_dir, win_title, win_app) = {
+    // ── 3. Persist to frames/{hash}.png (dedup-safe) ─────────────────────
+    let (log, frames_dir) = {
         let guard = state.lock().await;
         let active = guard
             .active
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("session vanished"))?;
-        let (t, a) = active_window_info();
-        (active.log.clone(), active.frames_dir.clone(), t, a)
+        (active.log.clone(), active.frames_dir.clone())
     };
     let frame_path = frames_dir.join(format!("{frame_hash}.png"));
     if !frame_path.exists() {
@@ -160,31 +222,55 @@ async fn promote_step(
             .with_context(|| format!("writing {}", frame_path.display()))?;
     }
 
-    // 4. Emit StepPromoted event
+    // ── 4. Emit StepPromoted ──────────────────────────────────────────────
     let rec = log.append(EventKind::StepPromoted {
         step_index: index,
         frame_hash: frame_hash.clone(),
-        width: frame.width(),
-        height: frame.height(),
+        width: w,
+        height: h,
         window_title: win_title.clone(),
         window_class: None,
         app_name: win_app.clone(),
     })?;
 
-    // 5. Optionally run AI description and emit a follow-up event
+    // ── 5. Emit OcrResult (regions with text hashes only) ─────────────────
+    if !ocr_regions.is_empty() {
+        let _ = log.append(EventKind::OcrResult {
+            frame_hash: frame_hash.clone(),
+            text_length: ocr_regions.len(),
+            regions: ocr_regions,
+        });
+    }
+
+    // ── 6. Emit RedactionApplied events ──────────────────────────────────
+    // Group hits by rule name to produce one event per rule per step.
+    let mut by_rule: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for (rule_name, _) in &redaction_hits {
+        *by_rule.entry(rule_name.clone()).or_default() += 1;
+    }
+    for (rule_name, count) in by_rule {
+        let _ = log.append(EventKind::RedactionApplied {
+            frame_hash: Some(frame_hash.clone()),
+            rule_name,
+            match_count: count,
+            action: "applied".into(),
+        });
+    }
+
+    // ── 7. AI description ─────────────────────────────────────────────────
     if ai_on {
         if let Ok(desc) = describer::describe(&frame, win_title.as_deref(), win_app.as_deref()) {
             let _ = log.append(EventKind::AiDescription {
                 step_index: index,
-                text: desc.clone(),
+                text: desc,
                 model: "heuristic-v2".into(),
                 language: lang.to_string(),
             });
         }
     }
 
-    // 6. Bump UI step counter and emit a "step-captured" event with a view
-    //    payload the React side can render directly.
+    // ── 8. Notify UI ──────────────────────────────────────────────────────
     {
         let mut guard = state.lock().await;
         guard.step_count += 1;
@@ -199,10 +285,78 @@ async fn promote_step(
     Ok(())
 }
 
-/// Returns (window_title, app_name) for the topmost non-minimised window.
-/// xcap 0.0.14 has no is_focused(); we pick the first non-minimised,
-/// non-empty-title window as a best-effort heuristic.
+/// Returns (window_title, app_name) for the currently focused window.
+///
+/// Windows: uses GetForegroundWindow + QueryFullProcessImageNameW — the only
+/// accurate way to get the true foreground window, regardless of z-order.
+///
+/// Other platforms: falls back to the xcap heuristic (first non-minimised
+/// window with a non-empty title) until OS-specific APIs are wired in P2.
+#[cfg(target_os = "windows")]
 fn active_window_info() -> (Option<String>, Option<String>) {
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    };
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return (None, None);
+        }
+
+        // Window title ─────────────────────────────────────────────────────
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), 512);
+        if title_len == 0 {
+            return (None, None);
+        }
+        let title = String::from_utf16_lossy(&title_buf[..title_len as usize]);
+
+        // Executable name ───────────────────────────────────────────────────
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+
+        let app_name = if pid != 0 {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if !handle.is_null() {
+                let mut exe_buf = [0u16; 512];
+                let mut size: u32 = 512;
+                let ok = QueryFullProcessImageNameW(
+                    handle,
+                    PROCESS_NAME_WIN32,
+                    exe_buf.as_mut_ptr(),
+                    &mut size,
+                );
+                windows_sys::Win32::Foundation::CloseHandle(handle);
+                if ok != 0 && size > 0 {
+                    let path = String::from_utf16_lossy(&exe_buf[..size as usize]);
+                    std::path::Path::new(&path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        (Some(title), app_name)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn active_window_info() -> (Option<String>, Option<String>) {
+    // xcap heuristic: first non-minimised, non-empty-title window.
+    // Replace with platform-specific focus APIs in a follow-up P2 task.
     let result = std::panic::catch_unwind(|| {
         let wins = xcap::Window::all().ok()?;
         wins.into_iter()
@@ -214,4 +368,74 @@ fn active_window_info() -> (Option<String>, Option<String>) {
         Ok(Some((title, app))) => (Some(title), Some(app)),
         _ => (None, None),
     }
+}
+
+// ── Test-only helpers ─────────────────────────────────────────────────────────
+
+/// Pure synchronous simulation of the capture state machine.
+///
+/// Takes pre-computed fingerprints (one per poll tick) and returns the indices
+/// of the frames that would have been promoted as steps. Used by integration
+/// tests to verify the diff + stability + promote-on-replace logic without
+/// needing a real screen or the Tauri runtime.
+///
+/// An unconsumed candidate at the end of the sequence is flushed as promoted
+/// (equivalent to the user stopping the recording while on that screen).
+#[cfg(test)]
+pub fn simulate_capture_decisions(
+    fingerprints: &[image::GrayImage],
+    change_threshold: f32,
+    stability_frames: u32,
+) -> Vec<usize> {
+    use crate::capture::diff;
+
+    let mut reference: Option<image::GrayImage> = None;
+    let mut candidate: Option<(image::GrayImage, usize)> = None;
+    let mut stable_streak: u32 = 0;
+    let mut promoted: Vec<usize> = Vec::new();
+
+    for (i, fp) in fingerprints.iter().enumerate() {
+        if reference.is_none() {
+            reference = Some(fp.clone());
+            continue;
+        }
+
+        if candidate.is_some() {
+            let score = {
+                let (cand_fp, _) = candidate.as_ref().unwrap();
+                diff::diff_score(cand_fp, fp)
+            };
+            if score < change_threshold * 0.5 {
+                stable_streak += 1;
+                if stable_streak >= stability_frames {
+                    let (old_fp, old_idx) = candidate.take().unwrap();
+                    promoted.push(old_idx);
+                    reference = Some(old_fp);
+                    stable_streak = 0;
+                }
+            } else {
+                let (old_fp, old_idx) = candidate.take().unwrap();
+                promoted.push(old_idx);
+                reference = Some(old_fp);
+                let new_score = diff::diff_score(reference.as_ref().unwrap(), fp);
+                if new_score >= change_threshold {
+                    candidate = Some((fp.clone(), i));
+                    stable_streak = 0;
+                }
+            }
+        } else {
+            let score = diff::diff_score(reference.as_ref().unwrap(), fp);
+            if score >= change_threshold {
+                candidate = Some((fp.clone(), i));
+                stable_streak = 0;
+            }
+        }
+    }
+
+    // Flush remaining candidate (session ended while dwelling on a screen).
+    if let Some((_, idx)) = candidate.take() {
+        promoted.push(idx);
+    }
+
+    promoted
 }

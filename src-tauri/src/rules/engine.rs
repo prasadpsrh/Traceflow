@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuleAction {
     /// Blur the pixel region (image-level).
     Blur,
@@ -73,6 +73,7 @@ struct CompiledRule {
 
 /// Compiled rule engine — combines one or more rule packs into a single
 /// evaluator. Construction is fallible; evaluation is infallible.
+#[derive(Debug)]
 pub struct RuleEngine {
     rules: Vec<CompiledRule>,
     pack_names: Vec<String>,

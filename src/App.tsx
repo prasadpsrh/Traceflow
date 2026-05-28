@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import CaptureControl from "./components/CaptureControl";
 import StepGallery from "./components/StepGallery";
 import ExportPanel from "./components/ExportPanel";
+import SessionHistory from "./components/SessionHistory";
+import ToastStack, { ToastMessage } from "./components/Toast";
 
 export interface StepView {
   index: number;
@@ -38,8 +40,23 @@ export interface MonitorInfo {
 
 export type ExportFormat = "docx" | "md" | "html" | "json";
 
+let _toastSeq = 0;
+
 export default function App() {
   const [recording, setRecording] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const toast = useCallback(
+    (text: string, kind: ToastMessage["kind"] = "info") => {
+      const id = ++_toastSeq;
+      setToasts((prev) => [...prev, { id, text, kind }]);
+    },
+    []
+  );
+  const dismissToast = useCallback(
+    (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id)),
+    []
+  );
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState("Untitled documentation");
   const [steps, setSteps] = useState<StepView[]>([]);
@@ -85,8 +102,9 @@ export default function App() {
       setSteps([]);
       setVerifyMsg(null);
       setRecording(true);
+      toast("Recording started", "success");
     } catch (e) {
-      alert(`Could not start capture: ${e}`);
+      toast(`Could not start capture: ${e}`, "error");
     }
   };
 
@@ -94,8 +112,9 @@ export default function App() {
     try {
       await invoke("stop_capture");
       setRecording(false);
+      toast("Recording stopped", "info");
     } catch (e) {
-      alert(`Could not stop capture: ${e}`);
+      toast(`Could not stop capture: ${e}`, "error");
     }
   };
 
@@ -124,9 +143,9 @@ export default function App() {
       const path = await invoke<string>("export_document", {
         req: { output_path: target, title: sessionTitle, author: null },
       });
-      alert(`Exported to:\n${path}`);
+      toast(`Exported → ${path}`, "success");
     } catch (e) {
-      alert(`Export failed: ${e}`);
+      toast(`Export failed: ${e}`, "error");
     }
   };
 
@@ -143,6 +162,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">
@@ -166,6 +186,19 @@ export default function App() {
             monitors={monitors}
             onStart={handleStart}
             onStop={handleStop}
+          />
+          <div style={{ height: 24 }} />
+          <SessionHistory
+            onLoad={(summary) => {
+              setSessionTitle(summary.title);
+              setSessionId(summary.id);
+              setSteps([]);
+              setVerifyMsg(null);
+              // Re-fetch steps projected from the loaded session log.
+              invoke<StepView[]>("get_session_steps")
+                .then(setSteps)
+                .catch(console.error);
+            }}
           />
           <div style={{ height: 24 }} />
           <ExportPanel

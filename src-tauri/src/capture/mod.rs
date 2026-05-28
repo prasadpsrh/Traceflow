@@ -2,4 +2,5 @@
 
 pub mod diff;
 pub mod engine;
+pub mod input;
 pub mod monitor;

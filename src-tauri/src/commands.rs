@@ -73,12 +73,25 @@ pub async fn start_capture(
             meta,
             log: Arc::new(log),
             frames_dir: paths.frames_dir,
+            input_hook: Arc::new(std::sync::Mutex::new(None)),
         });
         guard.capture_stop_flag = false;
         guard.is_recording = true;
         guard.step_count = 0;
         id
     };
+
+    // Start input hooks (mouse + keyboard) on a dedicated OS thread.
+    {
+        let mut guard = state.lock().await;
+        let state_for_hooks: SharedState = (*state.inner()).clone();
+        let hook = crate::capture::input::start_input_hooks(state_for_hooks);
+        if let Some(active) = &guard.active {
+            if let Ok(mut slot) = active.input_hook.lock() {
+                *slot = Some(hook);
+            }
+        }
+    }
 
     // Launch the capture loop on a background task.
     let state_clone: SharedState = (*state.inner()).clone();
@@ -110,6 +123,15 @@ pub async fn stop_capture(state: State<'_, SharedState>) -> Result<Session, Stri
                 reason: "user_stop".into(),
             })
             .map_err(|e| e.to_string())?;
+    }
+
+    // Stop input hooks.
+    if let Some(active) = &guard.active {
+        if let Ok(mut slot) = active.input_hook.lock() {
+            if let Some(hook) = slot.take() {
+                hook.stop();
+            }
+        }
     }
 
     // Stamp ended_at and return metadata.
@@ -254,4 +276,151 @@ pub struct VerifyReport {
     pub ok: bool,
     pub verified_events: u64,
     pub message: String,
+}
+
+/// A brief summary of a past session — enough for the history panel.
+#[derive(Debug, Serialize)]
+pub struct SessionSummary {
+    pub id: String,
+    pub title: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub step_count: usize,
+    pub root: PathBuf,
+}
+
+#[tauri::command]
+pub async fn list_sessions() -> Result<Vec<SessionSummary>, String> {
+    let sessions_dir = AppState::data_root().join("sessions");
+    if !sessions_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut summaries: Vec<SessionSummary> = Vec::new();
+
+    let entries = std::fs::read_dir(&sessions_dir).map_err(|e| e.to_string())?;
+    for entry in entries.flatten() {
+        let log_path = entry.path().join("events.ndjson");
+        if !log_path.exists() {
+            continue;
+        }
+        let records = match event_log::read_all(&log_path) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let mut title = "Untitled".to_string();
+        let mut started_at = String::new();
+        let mut ended_at: Option<String> = None;
+        let mut step_count = 0usize;
+        let mut session_id = String::new();
+
+        for r in &records {
+            session_id = r.session.to_string();
+            match &r.body {
+                crate::events::EventKind::SessionStart { title: t, .. } => {
+                    title = t.clone();
+                    started_at = r.at.to_rfc3339();
+                }
+                crate::events::EventKind::SessionEnd { .. } => {
+                    ended_at = Some(r.at.to_rfc3339());
+                }
+                crate::events::EventKind::StepPromoted { .. } => {
+                    step_count += 1;
+                }
+                _ => {}
+            }
+        }
+
+        if session_id.is_empty() {
+            continue;
+        }
+        summaries.push(SessionSummary {
+            id: session_id,
+            title,
+            started_at,
+            ended_at,
+            step_count,
+            root: entry.path(),
+        });
+    }
+
+    // Most-recent first.
+    summaries.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    Ok(summaries)
+}
+
+/// Load a past session so it becomes the current "active" for export/verify.
+#[tauri::command]
+pub async fn load_session(
+    root: PathBuf,
+    state: State<'_, SharedState>,
+) -> Result<SessionSummary, String> {
+    let log_path = root.join("events.ndjson");
+    if !log_path.exists() {
+        return Err(format!("events.ndjson not found in {}", root.display()));
+    }
+    let records = event_log::read_all(&log_path).map_err(|e| e.to_string())?;
+
+    let mut title = "Untitled".to_string();
+    let mut started_at = String::new();
+    let mut ended_at: Option<String> = None;
+    let mut step_count = 0usize;
+    let mut session_id_str = String::new();
+
+    for r in &records {
+        session_id_str = r.session.to_string();
+        match &r.body {
+            crate::events::EventKind::SessionStart { title: t, .. } => {
+                title = t.clone();
+                started_at = r.at.to_rfc3339();
+            }
+            crate::events::EventKind::SessionEnd { .. } => {
+                ended_at = Some(r.at.to_rfc3339());
+            }
+            crate::events::EventKind::StepPromoted { .. } => step_count += 1,
+            _ => {}
+        }
+    }
+
+    // Open the log for appending (allows post-load edits/deletions).
+    let log = crate::events::log::EventLog::open_for_append(&log_path)
+        .map_err(|e| e.to_string())?;
+
+    let frames_dir = root.join("frames");
+    let session_id: uuid::Uuid = session_id_str.parse().map_err(|e: uuid::Error| e.to_string())?;
+
+    let meta = crate::state::Session {
+        id: session_id,
+        title: title.clone(),
+        started_at: records
+            .first()
+            .map(|r| r.at)
+            .unwrap_or_else(chrono::Utc::now),
+        ended_at: records.last().and_then(|r| {
+            if matches!(&r.body, crate::events::EventKind::SessionEnd { .. }) {
+                Some(r.at)
+            } else {
+                None
+            }
+        }),
+        root: root.clone(),
+    };
+
+    let mut guard = state.lock().await;
+    guard.active = Some(ActiveSession {
+        meta,
+        log: Arc::new(log),
+        frames_dir,
+        input_hook: Arc::new(std::sync::Mutex::new(None)),
+    });
+
+    Ok(SessionSummary {
+        id: session_id_str,
+        title,
+        started_at,
+        ended_at,
+        step_count,
+        root,
+    })
 }

@@ -1,11 +1,37 @@
 // Privacy/redaction primitives.
 //
-// In v2, the rules engine (`crate::rules`) is the brain — it decides what
-// counts as PII based on whichever rule packs are loaded. This module just
-// provides the *image-level* primitives the rules engine asks for once it
-// has bounding boxes (from OCR, in phase 2).
+// `apply_redactions` is the high-level entry point: given OCR word regions
+// and a compiled rule engine, it evaluates every word's text, applies
+// pixel-level redactions for Blur/BlackBox hits, and returns a summary of
+// what was redacted (for the RedactionApplied event log).
 
+use crate::events::event::OcrRegion;
+use crate::rules::engine::{RuleAction, RuleEngine};
 use image::{ImageBuffer, Rgba, RgbaImage};
+
+/// Evaluate every OCR word against the rule engine.
+/// For Blur/BlackBox hits the pixel region is modified in-place.
+/// Returns `(rule_name, text_hash)` for every hit — used to build
+/// `RedactionApplied` events.
+pub fn apply_redactions(
+    frame: &mut RgbaImage,
+    text_regions: &[(String, OcrRegion)],
+    engine: &RuleEngine,
+) -> Vec<(String, String)> {
+    let mut applied = Vec::new();
+    for (text, region) in text_regions {
+        for hit in engine.evaluate(text) {
+            match &hit.action {
+                RuleAction::Blur => blur_region(frame, region.x, region.y, region.w, region.h),
+                RuleAction::BlackBox => black_box(frame, region.x, region.y, region.w, region.h),
+                // Text-level or flag-only actions: no pixel change, still recorded.
+                RuleAction::Mask { .. } | RuleAction::Drop | RuleAction::Flag => {}
+            }
+            applied.push((hit.rule_name.clone(), region.text_hash.clone()));
+        }
+    }
+    applied
+}
 
 /// Blur a rectangular region of a frame (used when a rule's action is `Blur`).
 pub fn blur_region(frame: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32) {

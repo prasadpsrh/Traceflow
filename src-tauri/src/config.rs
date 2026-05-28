@@ -41,6 +41,9 @@ pub struct CaptureCfg {
     /// If true, persist every sampled frame (not just promoted ones).
     /// Costs disk space, enables full forensic replay.
     pub keep_all_frames: bool,
+    /// Zero-based index of the monitor to capture. 0 = primary.
+    #[serde(default)]
+    pub monitor_index: u32,
 }
 
 impl Default for CaptureCfg {
@@ -53,6 +56,7 @@ impl Default for CaptureCfg {
             redact_pii: true,
             language: "en".into(),
             keep_all_frames: false,
+            monitor_index: 0,
         }
     }
 }

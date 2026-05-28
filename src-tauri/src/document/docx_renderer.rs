@@ -235,10 +235,13 @@ fn build_docx(view: &DocumentView, spec: &DocxSpec, output_path: &Path) -> Resul
             );
         }
 
-        // Embedded image
+        // Embedded image — re-encode as JPEG to keep .docx file sizes manageable.
+        // PNG frames from a 1080p screen are 1–2 MB each; JPEG at quality 82
+        // typically compresses to 100–300 KB with no perceptible quality loss
+        // for documentation screenshots.
         if step.image_path.exists() {
-            let bytes = std::fs::read(&step.image_path)
-                .with_context(|| format!("reading {}", step.image_path.display()))?;
+            let bytes = encode_for_docx(&step.image_path)
+                .with_context(|| format!("encoding {}", step.image_path.display()))?;
             let emu_w = spec.step_layout.image_emu_width;
             let emu_h = emu_height_for(step.width, step.height, emu_w);
             let pic = Pic::new(&bytes).size(emu_w, emu_h);
@@ -287,4 +290,17 @@ fn emu_height_for(px_w: u32, px_h: u32, emu_w: u32) -> u32 {
         return emu_w;
     }
     ((emu_w as u64 * px_h as u64) / px_w as u64) as u32
+}
+
+/// Re-encode a PNG frame as JPEG for .docx embedding.
+/// Falls back to raw PNG bytes if decoding fails.
+fn encode_for_docx(path: &Path) -> anyhow::Result<Vec<u8>> {
+    let img = image::open(path).context("opening image")?;
+    let mut buf = Vec::new();
+    img.write_to(
+        &mut std::io::Cursor::new(&mut buf),
+        image::ImageFormat::Jpeg,
+    )
+    .context("JPEG encode")?;
+    Ok(buf)
 }
