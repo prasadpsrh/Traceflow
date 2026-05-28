@@ -40,8 +40,14 @@ impl std::fmt::Debug for ActiveSession {
 #[derive(Debug)]
 pub struct AppState {
     pub config: ProjectConfig,
+    /// Most recent session — retained after recording stops so export/verify/edit
+    /// keep working without requiring the capture loop to be running.
+    /// Replaced (not cleared) when a new session starts.
     pub active: Option<ActiveSession>,
-    /// Set to true to ask the capture loop to stop.
+    /// True only while the capture loop is actively running.
+    /// Distinct from `active.is_some()` so we can query post-stop sessions.
+    pub is_recording: bool,
+    /// Set to true to ask the capture loop to exit on its next tick.
     pub capture_stop_flag: bool,
     /// Cached step count so the UI status bar can show it cheaply.
     pub step_count: usize,
@@ -53,6 +59,7 @@ impl AppState {
         Self {
             config,
             active: None,
+            is_recording: false,
             capture_stop_flag: false,
             step_count: 0,
         }

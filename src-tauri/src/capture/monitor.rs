@@ -10,10 +10,10 @@ pub fn list_monitors() -> Result<Vec<MonitorInfo>> {
     for (index, m) in monitors.iter().enumerate() {
         out.push(MonitorInfo {
             index,
-            name: m.name().unwrap_or_default().to_string(),
-            width: m.width().unwrap_or(0),
-            height: m.height().unwrap_or(0),
-            is_primary: m.is_primary().unwrap_or(false),
+            name: m.name().to_string(),
+            width: m.width(),
+            height: m.height(),
+            is_primary: m.is_primary(),
         });
     }
     Ok(out)
@@ -27,7 +27,7 @@ pub fn get_monitor(index: usize) -> Result<Monitor> {
     } else {
         Monitor::all()?
             .into_iter()
-            .find(|m| m.is_primary().unwrap_or(false))
+            .find(|m| m.is_primary())
             .ok_or_else(|| anyhow::anyhow!("no primary monitor found"))
     }
 }

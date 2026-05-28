@@ -41,7 +41,7 @@ pub async fn start_capture(
     // Set up the session: directories + fresh event log.
     let session_id = {
         let mut guard = state.lock().await;
-        if guard.active.is_some() {
+        if guard.is_recording {
             return Err("a capture session is already active".into());
         }
         let id = Uuid::new_v4();
@@ -75,6 +75,7 @@ pub async fn start_capture(
             frames_dir: paths.frames_dir,
         });
         guard.capture_stop_flag = false;
+        guard.is_recording = true;
         guard.step_count = 0;
         id
     };
@@ -95,20 +96,28 @@ pub async fn start_capture(
 pub async fn stop_capture(state: State<'_, SharedState>) -> Result<Session, String> {
     let mut guard = state.lock().await;
     guard.capture_stop_flag = true;
-    let active = guard
-        .active
-        .take()
-        .ok_or_else(|| "no active session".to_string())?;
-    // Emit SessionEnd
-    active
-        .log
-        .append(EventKind::SessionEnd {
-            reason: "user_stop".into(),
-        })
-        .map_err(|e| e.to_string())?;
-    let mut meta = active.meta;
-    meta.ended_at = Some(chrono::Utc::now());
-    Ok(meta)
+    guard.is_recording = false;
+
+    // Append SessionEnd — borrow ends before the mutable update below.
+    {
+        let active = guard
+            .active
+            .as_ref()
+            .ok_or_else(|| "no active session".to_string())?;
+        active
+            .log
+            .append(EventKind::SessionEnd {
+                reason: "user_stop".into(),
+            })
+            .map_err(|e| e.to_string())?;
+    }
+
+    // Stamp ended_at and return metadata.
+    // active stays in state so export/verify/edit keep working after stop.
+    let ended_at = chrono::Utc::now();
+    let active = guard.active.as_mut().unwrap();
+    active.meta.ended_at = Some(ended_at);
+    Ok(active.meta.clone())
 }
 
 #[tauri::command]

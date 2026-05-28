@@ -46,7 +46,7 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
         // Stop check
         {
             let guard = state.lock().await;
-            if guard.capture_stop_flag || guard.active.is_none() {
+            if guard.capture_stop_flag || !guard.is_recording {
                 log::info!("capture loop stopping");
                 return Ok(());
             }
@@ -62,33 +62,55 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
         };
         let fp = diff::fingerprint(&frame);
 
-        match (&reference, &candidate) {
-            (None, _) => {
-                reference = Some(fp);
-            }
-            (Some(ref_fp), None) => {
-                let score = diff::diff_score(ref_fp, &fp);
-                if score >= change_threshold {
+        // ── Establish reference on first frame ──────────────────────────────
+        if reference.is_none() {
+            reference = Some(fp);
+            tokio::time::sleep(tick).await;
+            continue;
+        }
+
+        if candidate.is_some() {
+            // ── Candidate exists: check stability ────────────────────────────
+            // Scoped borrow so we can take ownership of `candidate` below.
+            let score = {
+                let (cand_fp, _) = candidate.as_ref().unwrap();
+                diff::diff_score(cand_fp, &fp)
+            };
+
+            if score < change_threshold * 0.5 {
+                // Still on the same screen — accumulate confirmation frames.
+                stable_streak += 1;
+                if stable_streak >= stability_frames {
+                    let (_, cand_frame) = candidate.take().unwrap();
+                    promote_step(&state, &app, cand_frame.clone(), next_index, ai_on, &lang)
+                        .await?;
+                    next_index += 1;
+                    reference = Some(diff::fingerprint(&cand_frame));
+                    stable_streak = 0;
+                }
+            } else {
+                // Screen changed AGAIN before the candidate stabilised.
+                // Promote the in-flight candidate rather than silently dropping
+                // it — this is what prevents fast navigation losing screens.
+                let (old_fp, old_frame) = candidate.take().unwrap();
+                promote_step(&state, &app, old_frame.clone(), next_index, ai_on, &lang)
+                    .await?;
+                next_index += 1;
+                reference = Some(old_fp);
+
+                // Is the brand-new frame already different from the just-set reference?
+                let new_score = diff::diff_score(reference.as_ref().unwrap(), &fp);
+                if new_score >= change_threshold {
                     candidate = Some((fp, frame));
-                    stable_streak = 1;
+                    stable_streak = 0;
                 }
             }
-            (Some(_), Some((cand_fp, _))) => {
-                let score = diff::diff_score(cand_fp, &fp);
-                if score < change_threshold * 0.5 {
-                    stable_streak += 1;
-                    if stable_streak >= stability_frames {
-                        let (_, cand_frame) = candidate.take().unwrap();
-                        promote_step(&state, &app, cand_frame.clone(), next_index, ai_on, &lang)
-                            .await?;
-                        next_index += 1;
-                        reference = Some(diff::fingerprint(&cand_frame));
-                        stable_streak = 0;
-                    }
-                } else {
-                    candidate = Some((fp, frame));
-                    stable_streak = 1;
-                }
+        } else {
+            // ── No candidate: compare new frame against reference ────────────
+            let score = diff::diff_score(reference.as_ref().unwrap(), &fp);
+            if score >= change_threshold {
+                candidate = Some((fp, frame));
+                stable_streak = 0;
             }
         }
 
@@ -123,17 +145,14 @@ async fn promote_step(
     let frame_hash = hex::encode(Sha256::digest(&png_bytes));
 
     // 3. Save to frames/{hash}.png, dedup-safe
-    let (log, frames_dir, window_title) = {
+    let (log, frames_dir, win_title, win_app) = {
         let guard = state.lock().await;
         let active = guard
             .active
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("session vanished"))?;
-        (
-            active.log.clone(),
-            active.frames_dir.clone(),
-            active_window_title(),
-        )
+        let (t, a) = active_window_info();
+        (active.log.clone(), active.frames_dir.clone(), t, a)
     };
     let frame_path = frames_dir.join(format!("{frame_hash}.png"));
     if !frame_path.exists() {
@@ -147,18 +166,18 @@ async fn promote_step(
         frame_hash: frame_hash.clone(),
         width: frame.width(),
         height: frame.height(),
-        window_title: window_title.clone(),
+        window_title: win_title.clone(),
         window_class: None,
-        app_name: None,
+        app_name: win_app.clone(),
     })?;
 
     // 5. Optionally run AI description and emit a follow-up event
     if ai_on {
-        if let Ok(desc) = describer::describe(&frame) {
+        if let Ok(desc) = describer::describe(&frame, win_title.as_deref(), win_app.as_deref()) {
             let _ = log.append(EventKind::AiDescription {
                 step_index: index,
                 text: desc.clone(),
-                model: "heuristic".into(),
+                model: "heuristic-v2".into(),
                 language: lang.to_string(),
             });
         }
@@ -180,13 +199,19 @@ async fn promote_step(
     Ok(())
 }
 
-fn active_window_title() -> Option<String> {
-    std::panic::catch_unwind(|| {
+/// Returns (window_title, app_name) for the topmost non-minimised window.
+/// xcap 0.0.14 has no is_focused(); we pick the first non-minimised,
+/// non-empty-title window as a best-effort heuristic.
+fn active_window_info() -> (Option<String>, Option<String>) {
+    let result = std::panic::catch_unwind(|| {
         let wins = xcap::Window::all().ok()?;
         wins.into_iter()
-            .find(|w| w.is_focused().unwrap_or(false))
-            .and_then(|w| w.title().ok().map(|t| t.to_string()))
-    })
-    .ok()
-    .flatten()
+            .filter(|w| !w.is_minimized() && !w.title().is_empty())
+            .map(|w| (w.title().to_string(), w.app_name().to_string()))
+            .next()
+    });
+    match result {
+        Ok(Some((title, app))) => (Some(title), Some(app)),
+        _ => (None, None),
+    }
 }

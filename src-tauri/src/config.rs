@@ -46,9 +46,9 @@ pub struct CaptureCfg {
 impl Default for CaptureCfg {
     fn default() -> Self {
         Self {
-            poll_fps: 4,
+            poll_fps: 8,
             change_threshold: 0.04,
-            stability_frames: 2,
+            stability_frames: 1,
             ai_describe: true,
             redact_pii: true,
             language: "en".into(),

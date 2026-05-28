@@ -25,6 +25,7 @@ export interface CaptureSettings {
   redact_pii: boolean;
   language: string;
   keep_all_frames: boolean;
+  monitor_index: number;
 }
 
 export interface MonitorInfo {
@@ -45,13 +46,14 @@ export default function App() {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [settings, setSettings] = useState<CaptureSettings>({
-    poll_fps: 4,
+    poll_fps: 8,
     change_threshold: 0.04,
-    stability_frames: 2,
+    stability_frames: 1,
     ai_describe: true,
     redact_pii: true,
     language: "en",
     keep_all_frames: false,
+    monitor_index: 0,
   });
 
   useEffect(() => {

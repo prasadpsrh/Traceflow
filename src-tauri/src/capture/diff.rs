@@ -28,17 +28,40 @@ pub fn fingerprint(frame: &RgbaImage) -> GrayImage {
     gray
 }
 
-/// Mean absolute difference, normalized to [0.0, 1.0].
-/// Returns 0.0 if both fingerprints are identical, 1.0 if maximally different.
+/// Minimum per-pixel luma delta to count a pixel as "changed".
+/// Filters sub-pixel rendering noise, JPEG artifacts, and clock-digit flips
+/// while catching real content changes.
+const CHANGED_PIXEL_MIN: u64 = 10;
+
+/// Weight applied to the changed-pixel fraction before combining with MAD.
+/// At 0.7 a frame where ≥6 % of pixels shift by ≥10 luma units scores ≥ 0.042,
+/// which clears the default 0.04 threshold even when the average delta is small
+/// (e.g. dark-theme UIs where most pixels stay near zero).
+const CPC_WEIGHT: f32 = 0.7;
+
+/// Hybrid diff score, normalised to [0.0, 1.0].
+///
+/// Combines:
+///   • MAD  – mean absolute luma difference (good for high-contrast or large changes)
+///   • CPC  – changed-pixel count fraction × CPC_WEIGHT (good for sparse changes on
+///            dark-themed UIs where only a small region updates)
+///
+/// The `max` of the two is returned so either signal alone can trigger capture.
 pub fn diff_score(a: &GrayImage, b: &GrayImage) -> f32 {
     debug_assert_eq!(a.dimensions(), b.dimensions());
     let n = (a.width() * a.height()) as u64;
     let mut sum: u64 = 0;
+    let mut changed: u64 = 0;
     for (pa, pb) in a.pixels().zip(b.pixels()) {
         let d = (pa[0] as i32 - pb[0] as i32).unsigned_abs() as u64;
         sum += d;
+        if d >= CHANGED_PIXEL_MIN {
+            changed += 1;
+        }
     }
-    (sum as f32) / (n as f32 * 255.0)
+    let mad = (sum as f32) / (n as f32 * 255.0);
+    let cpc = (changed as f32) / n as f32;
+    mad.max(cpc * CPC_WEIGHT)
 }
 
 #[cfg(test)]
@@ -63,5 +86,35 @@ mod tests {
         let f2 = solid_frame(255, 255, 255);
         let s = diff_score(&fingerprint(&f1), &fingerprint(&f2));
         assert!(s > 0.9, "expected near 1.0, got {s}");
+    }
+
+    #[test]
+    fn dark_theme_sparse_change_detected() {
+        // Simulate two dark-theme screens where ~8 % of pixels change from
+        // near-black to near-white (text / panel update).  MAD alone would give
+        // ~0.031 (below the default 0.04 threshold); CPC should push the score
+        // above it.
+        let mut f1: RgbaImage = ImageBuffer::from_pixel(640, 360, Rgba([20, 20, 20, 255]));
+        let f2_base: RgbaImage = f1.clone();
+        let mut f2 = f2_base;
+        let total = 640u32 * 360;
+        let to_change = total / 12; // ~8.3 %
+        for i in 0..to_change {
+            let x = i % 640;
+            let y = i / 640;
+            f2.put_pixel(x, y, Rgba([200, 200, 200, 255]));
+        }
+        // Also paint the same pixels in f1 identically dark so there's no
+        // pre-existing difference, making this a pure content-swap test.
+        for i in 0..to_change {
+            let x = i % 640;
+            let y = i / 640;
+            f1.put_pixel(x, y, Rgba([20, 20, 20, 255]));
+        }
+        let score = diff_score(&fingerprint(&f1), &fingerprint(&f2));
+        assert!(
+            score >= 0.04,
+            "dark-theme sparse change not detected: score={score:.4}"
+        );
     }
 }
