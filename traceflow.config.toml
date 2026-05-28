@@ -1,0 +1,40 @@
+# Traceflow project configuration
+#
+# This file is loaded from ~/Documents/Traceflow/traceflow.config.toml
+# It tells Traceflow which rule packs to activate, which templates to use,
+# and how to brand outputs. Everything is optional; sensible defaults
+# kick in for any section you omit.
+
+[project]
+name   = "My Documentation Project"
+author = ""
+
+[capture]
+poll_fps          = 4       # how many times per second to sample the screen
+change_threshold  = 0.04    # 0.0-1.0; lower = more captures, higher = only big changes
+stability_frames  = 2       # require N stable frames before promoting
+ai_describe       = true    # generate step descriptions locally
+redact_pii        = true    # apply rule packs to OCR output (phase 2)
+language          = "en"
+keep_all_frames   = false   # set true to persist every sampled frame (forensic mode)
+
+[rules]
+# Stack any combination of rule packs. Path is resolved against
+# the bundled rule_packs dir, then absolute. Add your own JSON files
+# to author custom industry/domain patterns.
+packs = [
+  "general_pii.json",
+  "secrets.json",
+  # "financial.json",
+  # "/path/to/your/custom_pack.json",
+]
+
+[templates]
+docx_spec = "default.docx.json"   # or "audit.docx.json", or your own
+markdown  = "default.md.j2"
+html      = "default.html.j2"
+
+[branding]
+accent_color = "#c33c1f"
+footer       = "Generated with Traceflow"
+# logo_path  = "/absolute/path/to/your/logo.png"

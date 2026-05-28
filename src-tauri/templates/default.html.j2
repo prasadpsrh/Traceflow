@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --accent: {{ branding.accent_color }};
+    --ink: #181614;
+    --paper: #f4efe6;
+    --rule: #d8cfbe;
+    --mute: #8a8278;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    max-width: 820px;
+    margin: 40px auto;
+    padding: 0 32px;
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.6;
+  }
+  h1 {
+    font-size: 40px;
+    letter-spacing: -0.02em;
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 12px;
+    margin-bottom: 4px;
+  }
+  h2 {
+    font-size: 24px;
+    color: var(--accent);
+    margin-top: 48px;
+    margin-bottom: 8px;
+  }
+  .meta { color: var(--mute); font-size: 12px; font-family: ui-monospace, monospace; }
+  .step { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px dashed var(--rule); }
+  .step:last-child { border-bottom: none; }
+  img {
+    max-width: 100%;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    margin: 12px 0;
+  }
+  footer {
+    margin-top: 80px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    color: var(--mute);
+    font-size: 11px;
+    text-align: center;
+  }
+  @media print {
+    body { margin: 0; padding: 16px; background: white; }
+    .step { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1>{{ title }}</h1>
+<p class="meta">
+  {% if author %}by {{ author }} · {% endif %}generated {{ generated_at }}
+  · session {{ session_id[:8] }} · {{ event_count }} events
+</p>
+
+{% for step in steps %}
+<section class="step">
+  <h2>Step {{ step.index + 1 }}</h2>
+  {% if step.window_title or step.app_name %}
+  <p class="meta">
+    {% if step.window_title %}Window: {{ step.window_title }}{% endif %}
+    {% if step.window_title and step.app_name %} · {% endif %}
+    {% if step.app_name %}App: {{ step.app_name }}{% endif %}
+  </p>
+  {% endif %}
+  <img src="{{ step.image_path }}" alt="Step {{ step.index + 1 }}">
+  <p>{{ step.description }}</p>
+</section>
+{% endfor %}
+
+<footer>{{ branding.footer }}</footer>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "default",
+  "version": "1",
+  "orientation": "portrait",
+  "cover_page": {
+    "show": true,
+    "show_author": true,
+    "show_generated_at": true,
+    "show_event_count": true
+  },
+  "step_layout": {
+    "image_emu_width": 6000000,
+    "show_window_title": true,
+    "show_app_name": true,
+    "show_captured_at": false,
+    "description_position": "after"
+  },
+  "typography": {
+    "title_size": 56,
+    "heading_size": 32,
+    "body_size": 22,
+    "meta_size": 18
+  }
+}

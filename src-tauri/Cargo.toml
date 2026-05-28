@@ -1,0 +1,83 @@
+[package]
+name = "traceflow"
+version = "0.2.0"
+description = "Horizontal workflow capture & documentation platform"
+authors = ["Your Team <hello@traceflow.example>"]
+edition = "2021"
+rust-version = "1.78"
+
+[lib]
+name = "traceflow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri v2 core + plugins
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-store = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-os = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Cross-platform screen capture
+xcap = "0.0.14"
+
+# Image processing
+image = { version = "0.25", features = ["png", "jpeg"] }
+imageproc = "0.25"
+
+# Word .docx generation
+docx-rs = "0.4"
+
+# Templating (for .md, .html, .json, .txt renderers)
+minijinja = { version = "2", features = ["loader"] }
+
+# Hashing for event chain + content-addressed frames
+sha2 = "0.10"
+hex = "0.4"
+
+# Time, IDs, paths
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+dirs = "5"
+
+# Error handling + logging
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+
+# PII detection
+regex = "1"
+once_cell = "1"
+
+# Encryption (project-level)
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+
+# Base64
+base64 = "0.22"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

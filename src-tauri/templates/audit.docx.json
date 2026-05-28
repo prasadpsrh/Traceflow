@@ -1,0 +1,24 @@
+{
+  "name": "audit",
+  "version": "1",
+  "orientation": "landscape",
+  "cover_page": {
+    "show": true,
+    "show_author": true,
+    "show_generated_at": true,
+    "show_event_count": true
+  },
+  "step_layout": {
+    "image_emu_width": 7500000,
+    "show_window_title": true,
+    "show_app_name": true,
+    "show_captured_at": true,
+    "description_position": "before"
+  },
+  "typography": {
+    "title_size": 48,
+    "heading_size": 28,
+    "body_size": 20,
+    "meta_size": 16
+  }
+}

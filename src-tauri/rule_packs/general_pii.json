@@ -1,0 +1,28 @@
+{
+  "name": "general_pii",
+  "version": "1.0.0",
+  "description": "Common personally-identifiable information patterns. Industry-agnostic.",
+  "rules": [
+    {
+      "name": "email",
+      "pattern": "(?i)\\b[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}\\b",
+      "action": { "type": "mask", "replacement": "[EMAIL]" },
+      "description": "RFC-style email addresses",
+      "severity": "medium"
+    },
+    {
+      "name": "phone_us",
+      "pattern": "\\b(?:\\+?1[-. ]?)?\\(?\\d{3}\\)?[-. ]?\\d{3}[-. ]?\\d{4}\\b",
+      "action": { "type": "mask", "replacement": "[PHONE]" },
+      "description": "US-format phone numbers",
+      "severity": "medium"
+    },
+    {
+      "name": "ipv4",
+      "pattern": "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b",
+      "action": { "type": "flag" },
+      "description": "IPv4 address (flag only — often legitimately documented)",
+      "severity": "low"
+    }
+  ]
+}

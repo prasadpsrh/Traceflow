@@ -1,0 +1,24 @@
+# {{ title }}
+
+{% if author %}*by {{ author }}*  
+{% endif %}*Generated {{ generated_at }}*  
+*Session `{{ session_id[:8] }}` · {{ event_count }} events · {{ steps | length }} steps*
+
+---
+
+{% for step in steps %}
+## Step {{ step.index + 1 }}
+
+{% if step.window_title %}**Window:** {{ step.window_title }}  
+{% endif %}{% if step.app_name %}**Application:** {{ step.app_name }}  
+{% endif %}
+
+![Step {{ step.index + 1 }}]({{ step.image_path }})
+
+{{ step.description }}
+
+---
+
+{% endfor %}
+
+<sub>{{ branding.footer }}</sub>
