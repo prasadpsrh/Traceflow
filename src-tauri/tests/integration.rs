@@ -13,20 +13,20 @@
 //   export_*       — all four output formats
 //   describer_*    — smart window-title parsing
 
+use image::{ImageBuffer, Rgba, RgbaImage};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use traceflow_lib::{
     ai::describer,
     capture::{diff, engine::simulate_capture_decisions},
     config::ProjectConfig,
-    document::render::{render_to_file, project_steps_for_ui, RenderRequest},
+    document::render::{project_steps_for_ui, render_to_file, RenderRequest},
     events::{
         chain::verify_chain,
         event::{EventKind, SessionPaths},
         log::{read_all, EventLog},
     },
 };
-use image::{ImageBuffer, Rgba, RgbaImage};
-use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 // ─── Synthetic image helpers ──────────────────────────────────────────────────
@@ -81,7 +81,11 @@ impl FakeSession {
             host_os: "test".into(),
         })
         .unwrap();
-        FakeSession { dir, log, session_id }
+        FakeSession {
+            dir,
+            log,
+            session_id,
+        }
     }
 
     fn root(&self) -> &Path {
@@ -153,7 +157,9 @@ impl FakeSession {
 
     fn end(&self) {
         self.log
-            .append(EventKind::SessionEnd { reason: "test".into() })
+            .append(EventKind::SessionEnd {
+                reason: "test".into(),
+            })
             .unwrap();
     }
 
@@ -195,7 +201,10 @@ fn tampered_event_breaks_chain() {
 
     let mut records = read_all(&sess.events_log()).unwrap();
     // Silently mutate the step description field in the StepPromoted body.
-    if let EventKind::StepPromoted { ref mut frame_hash, .. } = records[1].body {
+    if let EventKind::StepPromoted {
+        ref mut frame_hash, ..
+    } = records[1].body
+    {
         frame_hash.push_str("__tampered");
     }
     let result = verify_chain(records.iter());
@@ -267,8 +276,10 @@ fn deleted_step_absent_from_projection() {
         .iter()
         .map(|s| s.image_path.file_name().unwrap().to_str().unwrap())
         .collect();
-    assert!
-        (!hashes.iter().any(|h| h.starts_with(&frame_hash(&solid_rgba(150, 150, 150)))),
+    assert!(
+        !hashes
+            .iter()
+            .any(|h| h.starts_with(&frame_hash(&solid_rgba(150, 150, 150)))),
         "deleted frame must not appear"
     );
 }
@@ -361,7 +372,11 @@ fn fast_navigation_no_screen_lost() {
     // A(ref) B(candidate, never confirmed) C(triggers promote-B) D D
     let fps = [fp(&a), fp(&b), fp(&c), fp(&d), fp(&d)];
     let promoted = simulate_capture_decisions(&fps, 0.04, 1);
-    assert!(promoted.len() >= 3, "B, C, D must all be captured; got {:?}", promoted);
+    assert!(
+        promoted.len() >= 3,
+        "B, C, D must all be captured; got {:?}",
+        promoted
+    );
 }
 
 /// stability_frames = 2 means a screen appearing for only 1 frame is
@@ -386,7 +401,11 @@ fn unconfirmed_candidate_flushed_at_end() {
     // A(ref) B(candidate, no further frames) — B must be flushed
     let fps = [fp(&a), fp(&b)];
     let promoted = simulate_capture_decisions(&fps, 0.04, 2);
-    assert_eq!(promoted, vec![1], "unconfirmed candidate must be flushed at end");
+    assert_eq!(
+        promoted,
+        vec![1],
+        "unconfirmed candidate must be flushed at end"
+    );
 }
 
 /// The hybrid MAD+CPC diff must detect sparse dark-theme content changes.
@@ -417,7 +436,10 @@ fn cursor_jitter_below_threshold() {
     let mut noisy = base.clone();
     noisy.put_pixel(0, 0, Rgba([210, 200, 200, 255]));
     let score = diff::diff_score(&fp(&base), &fp(&noisy));
-    assert!(score < 0.04, "single-pixel jitter must not exceed threshold, got {score}");
+    assert!(
+        score < 0.04,
+        "single-pixel jitter must not exceed threshold, got {score}"
+    );
 }
 
 // ═══ Export tests ════════════════════════════════════════════════════════════
@@ -425,9 +447,21 @@ fn cursor_jitter_below_threshold() {
 fn build_export_session() -> FakeSession {
     let sess = FakeSession::new("export test");
     let screens = [
-        (solid_rgba(30, 30, 30), Some("GitHub - Microsoft Edge"), Some("msedge.exe")),
-        (solid_rgba(230, 230, 230), Some("Settings - Windows Settings"), Some("SystemSettings.exe")),
-        (solid_rgba(80, 80, 80), Some("main.rs - my-project - Code"), Some("code.exe")),
+        (
+            solid_rgba(30, 30, 30),
+            Some("GitHub - Microsoft Edge"),
+            Some("msedge.exe"),
+        ),
+        (
+            solid_rgba(230, 230, 230),
+            Some("Settings - Windows Settings"),
+            Some("SystemSettings.exe"),
+        ),
+        (
+            solid_rgba(80, 80, 80),
+            Some("main.rs - my-project - Code"),
+            Some("code.exe"),
+        ),
     ];
     for (i, (img, title, app)) in screens.iter().enumerate() {
         sess.add_step(i, img, *title, *app);
@@ -442,8 +476,13 @@ fn export_docx_non_empty() {
     let sess = build_export_session();
     let cfg = ProjectConfig::default();
     render_to_file(&sess.render_request("docx"), &cfg).expect("docx export must succeed");
-    let size = std::fs::metadata(sess.root().join("out.docx")).unwrap().len();
-    assert!(size > 1000, ".docx must be non-trivially large, got {size} bytes");
+    let size = std::fs::metadata(sess.root().join("out.docx"))
+        .unwrap()
+        .len();
+    assert!(
+        size > 1000,
+        ".docx must be non-trivially large, got {size} bytes"
+    );
 }
 
 #[test]
@@ -452,11 +491,17 @@ fn export_markdown_contains_step_headings() {
     let cfg = ProjectConfig::default();
     render_to_file(&sess.render_request("md"), &cfg).expect("md export must succeed");
     let content = std::fs::read_to_string(sess.root().join("out.md")).unwrap();
-    assert!(content.contains("## Step 1"), "markdown must contain step heading");
+    assert!(
+        content.contains("## Step 1"),
+        "markdown must contain step heading"
+    );
     assert!(content.contains("## Step 2"), "markdown must have step 2");
     assert!(content.contains("## Step 3"), "markdown must have step 3");
     // RenderRequest::title overrides SessionStart title at export time.
-    assert!(content.contains("# Integration Test"), "render title must appear as H1, got:\n{content}");
+    assert!(
+        content.contains("# Integration Test"),
+        "render title must appear as H1, got:\n{content}"
+    );
 }
 
 #[test]
@@ -466,7 +511,10 @@ fn export_html_has_valid_structure() {
     render_to_file(&sess.render_request("html"), &cfg).expect("html export must succeed");
     let content = std::fs::read_to_string(sess.root().join("out.html")).unwrap();
     assert!(content.contains("<!doctype html>"), "must be valid HTML");
-    assert!(content.contains("<title>Integration Test</title>"), "render title must be in <head>, got:\n{content}");
+    assert!(
+        content.contains("<title>Integration Test</title>"),
+        "render title must be in <head>, got:\n{content}"
+    );
     assert!(content.contains("class=\"step\""), "step divs must exist");
     assert!(content.contains("Step 1"), "step 1 must appear");
 }
@@ -487,10 +535,16 @@ fn export_json_has_expected_fields() {
     // Each step must carry index, description, image_path.
     for (i, step) in steps.iter().enumerate() {
         assert_eq!(step["index"], i, "step index must be sequential");
-        assert!(step["description"].is_string(), "description must be string");
+        assert!(
+            step["description"].is_string(),
+            "description must be string"
+        );
         assert!(step["image_path"].is_string(), "image_path must be string");
     }
-    assert!(doc["event_count"].as_u64().unwrap() > 0, "event_count must be positive");
+    assert!(
+        doc["event_count"].as_u64().unwrap() > 0,
+        "event_count must be positive"
+    );
 }
 
 #[test]
@@ -521,76 +575,106 @@ fn desc(title: &str, app: &str) -> String {
 fn browser_edge_extracts_page_title() {
     let d = desc("GitHub - Microsoft Edge", "msedge.exe");
     assert!(d.contains("GitHub"), "must extract page title, got: {d}");
-    assert!(!d.to_lowercase().contains("edge"), "must not leak browser name");
+    assert!(
+        !d.to_lowercase().contains("edge"),
+        "must not leak browser name"
+    );
 }
 
 #[test]
 fn browser_chrome_strips_site_suffix() {
-    let d = desc("Stack Overflow - Stack Exchange - Google Chrome", "chrome.exe");
-    assert!(d.contains("Stack Overflow"), "must extract page name, got: {d}");
+    let d = desc(
+        "Stack Overflow - Stack Exchange - Google Chrome",
+        "chrome.exe",
+    );
+    assert!(
+        d.contains("Stack Overflow"),
+        "must extract page name, got: {d}"
+    );
 }
 
 #[test]
 fn browser_new_tab_gives_friendly_name() {
     let d = desc("New Tab - Google Chrome", "chrome.exe");
-    assert!(d.to_lowercase().contains("new") || d.to_lowercase().contains("tab"),
-        "new-tab must produce a friendly label, got: {d}");
+    assert!(
+        d.to_lowercase().contains("new") || d.to_lowercase().contains("tab"),
+        "new-tab must produce a friendly label, got: {d}"
+    );
 }
 
 #[test]
 fn browser_login_page_flagged() {
     let d = desc("Sign in - Google Accounts - Mozilla Firefox", "firefox.exe");
-    assert!(d.to_lowercase().contains("sign") || d.to_lowercase().contains("login"),
-        "login page must be flagged, got: {d}");
+    assert!(
+        d.to_lowercase().contains("sign") || d.to_lowercase().contains("login"),
+        "login page must be flagged, got: {d}"
+    );
 }
 
 #[test]
 fn vscode_shows_filename_and_app() {
     let d = desc("main.rs - my-project - Visual Studio Code", "code.exe");
-    assert!(d.contains("VS Code") || d.contains("Code"), "app must be named, got: {d}");
+    assert!(
+        d.contains("VS Code") || d.contains("Code"),
+        "app must be named, got: {d}"
+    );
     assert!(d.contains("main.rs"), "filename must appear, got: {d}");
 }
 
 #[test]
 fn file_explorer_shows_folder() {
     let d = desc("Downloads - File Explorer", "explorer.exe");
-    assert!(d.to_lowercase().contains("file explorer") || d.to_lowercase().contains("explorer"),
-        "must identify File Explorer, got: {d}");
+    assert!(
+        d.to_lowercase().contains("file explorer") || d.to_lowercase().contains("explorer"),
+        "must identify File Explorer, got: {d}"
+    );
     assert!(d.contains("Downloads"), "folder name must appear, got: {d}");
 }
 
 #[test]
 fn terminal_shows_context() {
     let d = desc("Administrator: Windows PowerShell", "powershell.exe");
-    assert!(d.to_lowercase().contains("terminal") || d.to_lowercase().contains("powershell"),
-        "must identify terminal, got: {d}");
+    assert!(
+        d.to_lowercase().contains("terminal") || d.to_lowercase().contains("powershell"),
+        "must identify terminal, got: {d}"
+    );
 }
 
 #[test]
 fn installer_detected_from_title() {
     let d = desc("Acme Pro Setup - InstallShield Wizard", "msiexec.exe");
-    assert!(d.to_lowercase().contains("install") || d.to_lowercase().contains("setup"),
-        "must detect installer, got: {d}");
+    assert!(
+        d.to_lowercase().contains("install") || d.to_lowercase().contains("setup"),
+        "must detect installer, got: {d}"
+    );
 }
 
 #[test]
 fn excel_shows_document_name() {
     let d = desc("budget_2026.xlsx - Excel", "excel.exe");
     assert!(d.contains("Excel"), "app name must appear, got: {d}");
-    assert!(d.contains("budget_2026.xlsx"), "document name must appear, got: {d}");
+    assert!(
+        d.contains("budget_2026.xlsx"),
+        "document name must appear, got: {d}"
+    );
 }
 
 #[test]
 fn dark_image_no_title_gives_fallback() {
     let img = solid_rgba(20, 20, 20);
     let d = describer::describe(&img, None, None).unwrap();
-    assert!(d.to_lowercase().contains("dark"), "dark screen fallback expected, got: {d}");
+    assert!(
+        d.to_lowercase().contains("dark"),
+        "dark screen fallback expected, got: {d}"
+    );
 }
 
 #[test]
 fn light_image_no_title_gives_fallback() {
     let img = solid_rgba(240, 240, 240);
     let d = describer::describe(&img, None, None).unwrap();
-    assert!(d.to_lowercase().contains("light") || d.to_lowercase().contains("application"),
-        "light screen fallback expected, got: {d}");
+    assert!(
+        d.to_lowercase().contains("light") || d.to_lowercase().contains("application"),
+        "light screen fallback expected, got: {d}"
+    );
 }

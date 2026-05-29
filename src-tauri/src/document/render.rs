@@ -78,7 +78,9 @@ pub fn render_to_file(req: &RenderRequest, cfg: &ProjectConfig) -> Result<PathBu
         .unwrap_or_default();
     match ext.as_str() {
         "docx" => docx_renderer::render(&view, &req.output_path, cfg)?,
-        "md" | "markdown" => text_renderer::render(&view, &req.output_path, &cfg.templates.markdown)?,
+        "md" | "markdown" => {
+            text_renderer::render(&view, &req.output_path, &cfg.templates.markdown)?
+        }
         "html" | "htm" => text_renderer::render(&view, &req.output_path, &cfg.templates.html)?,
         "json" => {
             let s = serde_json::to_string_pretty(&view).context("serializing view")?;
@@ -101,8 +103,7 @@ fn project(
     let mut started_at: Option<DateTime<Utc>> = None;
     let mut ended_at: Option<DateTime<Utc>> = None;
     let mut session_id = String::new();
-    let mut steps: std::collections::BTreeMap<usize, StepView> =
-        std::collections::BTreeMap::new();
+    let mut steps: std::collections::BTreeMap<usize, StepView> = std::collections::BTreeMap::new();
 
     for r in &records {
         session_id = r.session.to_string();
@@ -160,7 +161,10 @@ fn project(
 
     Ok(DocumentView {
         title: req.title.clone(),
-        author: req.author.clone().unwrap_or_else(|| cfg.project.author.clone()),
+        author: req
+            .author
+            .clone()
+            .unwrap_or_else(|| cfg.project.author.clone()),
         generated_at: Utc::now(),
         session_id,
         started_at,
@@ -176,7 +180,10 @@ fn project(
 }
 
 /// Same projection logic as `render_to_file`, exposed for direct UI use.
-pub fn project_steps_for_ui(records: &[crate::events::EventRecord], frames_dir: &Path) -> Vec<StepView> {
+pub fn project_steps_for_ui(
+    records: &[crate::events::EventRecord],
+    frames_dir: &Path,
+) -> Vec<StepView> {
     use crate::events::event::EventKind;
     let mut steps: std::collections::BTreeMap<usize, StepView> = std::collections::BTreeMap::new();
     for r in records {
@@ -204,7 +211,9 @@ pub fn project_steps_for_ui(records: &[crate::events::EventRecord], frames_dir: 
                     },
                 );
             }
-            EventKind::AiDescription { step_index, text, .. }
+            EventKind::AiDescription {
+                step_index, text, ..
+            }
             | EventKind::DescriptionEdited { step_index, text } => {
                 if let Some(s) = steps.get_mut(step_index) {
                     s.description = text.clone();
@@ -228,7 +237,13 @@ pub fn project_steps_for_ui(records: &[crate::events::EventRecord], frames_dir: 
 pub fn default_output_path(root: &Path, title: &str, ext: &str) -> PathBuf {
     let safe: String = title
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     root.join(format!("{safe}.{ext}"))
 }
@@ -265,14 +280,17 @@ mod smoke_tests {
             }
         };
         let log_path = dir.join("events.ndjson");
-        assert!(log_path.exists(), "events.ndjson missing in {}", dir.display());
+        assert!(
+            log_path.exists(),
+            "events.ndjson missing in {}",
+            dir.display()
+        );
 
         let records = read_all(&log_path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", log_path.display()));
         assert!(!records.is_empty(), "event log is empty");
 
-        let n = verify_chain(records.iter())
-            .unwrap_or_else(|e| panic!("chain broken: {e}"));
+        let n = verify_chain(records.iter()).unwrap_or_else(|e| panic!("chain broken: {e}"));
         eprintln!("✅ chain intact — {n} events verified in {}", dir.display());
     }
 
@@ -306,8 +324,7 @@ mod smoke_tests {
                 title: "Smoke Test Export".to_string(),
                 author: Some("smoke-test".to_string()),
             };
-            render_to_file(&req, &cfg)
-                .unwrap_or_else(|e| panic!("export to .{ext} failed: {e}"));
+            render_to_file(&req, &cfg).unwrap_or_else(|e| panic!("export to .{ext} failed: {e}"));
 
             assert!(out.exists(), ".{ext} output file not created");
             let size = std::fs::metadata(&out).unwrap().len();

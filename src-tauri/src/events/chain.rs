@@ -14,8 +14,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 /// Zero hash used as `prev` for the very first record.
-pub const ZERO_HASH: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Builds chained records given a running cursor (prev_hash + next_seq).
 pub struct ChainHasher {
@@ -54,8 +53,8 @@ impl ChainHasher {
             hash: String::new(),
             body,
         };
-        let canonical = canonical_bytes_excluding_hash(&placeholder)
-            .context("canonicalizing record")?;
+        let canonical =
+            canonical_bytes_excluding_hash(&placeholder).context("canonicalizing record")?;
         let mut h = Sha256::new();
         h.update(&canonical);
         let digest = hex::encode(h.finalize());

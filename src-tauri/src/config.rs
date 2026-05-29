@@ -108,8 +108,7 @@ impl Default for BrandingCfg {
 
 impl ProjectConfig {
     pub fn load(path: &Path) -> Result<Self> {
-        let bytes =
-            std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+        let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let s = std::str::from_utf8(&bytes)
             .with_context(|| format!("invalid UTF-8 in {}", path.display()))?;
         let cfg: ProjectConfig =

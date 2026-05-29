@@ -58,25 +58,20 @@ pub fn start_input_hooks(state: SharedState) -> InputHookHandle {
 mod platform {
     use super::*;
     use std::sync::atomic::AtomicBool;
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-    use windows_sys::Win32::UI::Accessibility::{
-        SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
-    };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, DispatchMessageW, GetMessageW, GetWindowTextW,
-        GetWindowThreadProcessId, PostQuitMessage, SetWindowsHookExW,
-        TranslateMessage, UnhookWindowsHookEx,
-        EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT,
-        HC_ACTION, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT,
-        WH_KEYBOARD_LL, WH_MOUSE_LL,
-        WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_RBUTTONDOWN,
-        WM_SYSKEYDOWN, MSG,
-    };
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW,
-        PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, DispatchMessageW, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
+        PostQuitMessage, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx,
+        EVENT_SYSTEM_FOREGROUND, HC_ACTION, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL,
+        WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
+        WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
+    };
 
     // Thread-local used to pass shared context into the hook callbacks.
     thread_local! {
@@ -115,7 +110,8 @@ mod platform {
                 EVENT_SYSTEM_FOREGROUND,
                 std::ptr::null_mut(),
                 Some(focus_proc),
-                0, 0,
+                0,
+                0,
                 WINEVENT_OUTOFCONTEXT,
             );
 
@@ -148,11 +144,7 @@ mod platform {
         });
     }
 
-    unsafe extern "system" fn mouse_proc(
-        code: i32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> LRESULT {
+    unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code == HC_ACTION as i32 {
             let button = match wparam as u32 {
                 WM_LBUTTONDOWN => Some("left"),
@@ -179,11 +171,8 @@ mod platform {
                                 if let Some(log) = maybe_log {
                                     let btn = btn.clone();
                                     tokio::task::spawn_blocking(move || {
-                                        let _ = log.append(EventKind::MouseClick {
-                                            x,
-                                            y,
-                                            button: btn,
-                                        });
+                                        let _ =
+                                            log.append(EventKind::MouseClick { x, y, button: btn });
                                     });
                                 }
                             });
@@ -227,7 +216,10 @@ mod platform {
                 let mut exe_buf = [0u16; 512];
                 let mut size: u32 = 512;
                 let ok = QueryFullProcessImageNameW(
-                    handle, PROCESS_NAME_WIN32, exe_buf.as_mut_ptr(), &mut size,
+                    handle,
+                    PROCESS_NAME_WIN32,
+                    exe_buf.as_mut_ptr(),
+                    &mut size,
                 );
                 CloseHandle(handle);
                 if ok != 0 && size > 0 {
@@ -236,9 +228,15 @@ mod platform {
                         .file_name()
                         .and_then(|n| n.to_str())
                         .map(|s| s.to_string())
-                } else { None }
-            } else { None }
-        } else { None };
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         HOOK_STATE.with(|s| {
             if let Some(inner) = s.borrow().as_ref() {
@@ -246,37 +244,33 @@ mod platform {
                     let state = inner.state.clone();
                     let title = window_title.clone();
                     let app = app_name.clone();
-                            inner.rt.spawn(async move {
-                                let maybe_log = {
-                                    let guard = state.lock().await;
-                                    if guard.is_recording {
-                                        guard.active.as_ref().map(|a| a.log.clone())
-                                    } else {
-                                        None
-                                    }
-                                };
-                                if let Some(log) = maybe_log {
-                                    let title = title.clone();
-                                    let app = app.clone();
-                                    tokio::task::spawn_blocking(move || {
-                                        let _ = log.append(EventKind::WindowFocusChanged {
-                                            window_title: title,
-                                            window_class: None,
-                                            app_name: app,
-                                        });
-                                    });
-                                }
+                    inner.rt.spawn(async move {
+                        let maybe_log = {
+                            let guard = state.lock().await;
+                            if guard.is_recording {
+                                guard.active.as_ref().map(|a| a.log.clone())
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(log) = maybe_log {
+                            let title = title.clone();
+                            let app = app.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let _ = log.append(EventKind::WindowFocusChanged {
+                                    window_title: title,
+                                    window_class: None,
+                                    app_name: app,
+                                });
                             });
+                        }
+                    });
                 }
             }
         });
     }
 
-    unsafe extern "system" fn kbd_proc(
-        code: i32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> LRESULT {
+    unsafe extern "system" fn kbd_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code == HC_ACTION as i32 {
             let is_keydown = matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
             if is_keydown {
@@ -296,9 +290,8 @@ mod platform {
                                 if let Some(log) = maybe_log {
                                     let vk = vk.clone();
                                     tokio::task::spawn_blocking(move || {
-                                        let _ = log.append(EventKind::KeyboardInput {
-                                            virtual_key: vk,
-                                        });
+                                        let _ = log
+                                            .append(EventKind::KeyboardInput { virtual_key: vk });
                                     });
                                 }
                             });

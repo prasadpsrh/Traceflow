@@ -86,8 +86,8 @@ pub fn read_all(path: &Path) -> Result<Vec<EventRecord>> {
         if line.trim().is_empty() {
             continue;
         }
-        let rec: EventRecord = serde_json::from_str(&line)
-            .with_context(|| format!("parsing line {i}: {line}"))?;
+        let rec: EventRecord =
+            serde_json::from_str(&line).with_context(|| format!("parsing line {i}: {line}"))?;
         out.push(rec);
     }
     Ok(out)
@@ -100,10 +100,8 @@ mod tests {
 
     #[test]
     fn write_read_roundtrip_preserves_chain() {
-        let path = std::env::temp_dir().join(format!(
-            "traceflow-test-{}.ndjson",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("traceflow-test-{}.ndjson", uuid::Uuid::new_v4()));
         let session = uuid::Uuid::new_v4();
         let log = EventLog::create(&path, session).unwrap();
         log.append(EventKind::SessionStart {

@@ -50,11 +50,7 @@ pub enum EventKind {
     },
 
     /// Mouse click event (when input hooks are wired up — phase 2).
-    MouseClick {
-        x: i32,
-        y: i32,
-        button: String,
-    },
+    MouseClick { x: i32, y: i32, button: String },
 
     /// Keyboard event (sanitized — never raw keystrokes for password fields).
     KeyboardInput { virtual_key: String },
@@ -84,10 +80,7 @@ pub enum EventKind {
     },
 
     /// User edited a step description in the UI.
-    DescriptionEdited {
-        step_index: usize,
-        text: String,
-    },
+    DescriptionEdited { step_index: usize, text: String },
 
     /// User deleted a step.
     StepDeleted { step_index: usize },

@@ -16,9 +16,8 @@ use minijinja::Environment;
 use std::path::{Path, PathBuf};
 
 pub fn render(view: &DocumentView, output_path: &Path, template_ref: &str) -> Result<()> {
-    let template_src = load_template(template_ref).with_context(|| {
-        format!("looking up template '{template_ref}'")
-    })?;
+    let template_src = load_template(template_ref)
+        .with_context(|| format!("looking up template '{template_ref}'"))?;
     let mut env = Environment::new();
     // Add a couple of convenience filters.
     env.add_filter("iso8601", |v: minijinja::Value| {
