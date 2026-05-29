@@ -146,6 +146,7 @@ identical in format to these.
 **Phase 1 (this code) — MVP horizontal product**
 - Event log + hash chain ✓
 - Cross-platform capture (pixel-based) ✓
+- Windows-first OCR + input hooks — redaction and input capture work fully on Windows today; Linux/macOS support is planned.
 - Template-driven .docx / .md / .html / .json export ✓
 - Pluggable rule packs ✓
 - Project config ✓

@@ -139,7 +139,10 @@ pub async fn stop_capture(state: State<'_, SharedState>) -> Result<Session, Stri
     // Stamp ended_at and return metadata.
     // active stays in state so export/verify/edit keep working after stop.
     let ended_at = chrono::Utc::now();
-    let active = guard.active.as_mut().unwrap();
+    let active = guard
+        .active
+        .as_mut()
+        .ok_or_else(|| "session disappeared during stop".to_string())?;
     active.meta.ended_at = Some(ended_at);
     Ok(active.meta.clone())
 }

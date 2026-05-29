@@ -29,7 +29,8 @@ Agent conventions and guardrails
 - Do not modify `traceflow.config.toml` without noting the intended runtime impact (capture rates, rule packs).
 - Respect TypeScript and Rust strictness: TypeScript `strict:true` and Rust toolchain pinned in [src-tauri/Cargo.toml](src-tauri/Cargo.toml).
 - When changing IPC commands, update both `src-tauri/src/commands.rs` and the frontend callers in `src/`.
-- There are no test scripts detected — avoid assuming test infra beyond build commands.
+- Integration tests exist in `src-tauri/tests/`; run them with `cd src-tauri && cargo test`.
+- Tests use synthetic frames and the production event/log/render pipeline, so they do not require a display server.
 
 Helpful links for deeper context
 - README and architecture notes: [README.md](README.md)

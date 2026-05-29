@@ -14,9 +14,6 @@ mod privacy;
 mod rules;
 mod state;
 
-#[cfg(test)]
-mod integration_tests;
-
 use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
