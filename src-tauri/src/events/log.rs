@@ -62,8 +62,11 @@ impl EventLog {
         let rec = chain.build(body)?;
         let json = serde_json::to_string(&rec).context("serializing event")?;
         let mut file = self.file.lock().unwrap();
+        // Write the newline-terminated JSON, flush and sync to durable storage.
         writeln!(file, "{json}").context("writing event")?;
-        file.sync_data().ok();
+        file.flush().context("flushing event")?;
+        file.sync_all()
+            .with_context(|| format!("syncing {}", self.path.display()))?;
         Ok(rec)
     }
 

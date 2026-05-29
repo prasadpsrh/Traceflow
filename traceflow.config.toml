@@ -6,8 +6,8 @@
 # kick in for any section you omit.
 
 [project]
-name   = "My Documentation Project"
-author = ""
+name   = "Traceflow Documentation Project"
+author = "Traceflow Team <hello@traceflow.example>"
 
 [capture]
 poll_fps          = 4       # how many times per second to sample the screen

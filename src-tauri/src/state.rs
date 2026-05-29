@@ -98,7 +98,7 @@ impl Default for AppState {
 
 /// Load and compile all rule packs listed in `config.rules.packs`.
 /// Returns `None` if no packs are configured or all fail to load.
-fn load_rule_engine(config: &ProjectConfig) -> Option<Arc<RuleEngine>> {
+pub(crate) fn load_rule_engine(config: &ProjectConfig) -> Option<Arc<RuleEngine>> {
     if config.rules.packs.is_empty() {
         return None;
     }
@@ -135,7 +135,7 @@ fn load_rule_engine(config: &ProjectConfig) -> Option<Arc<RuleEngine>> {
     }
 }
 
-fn rule_pack_dirs() -> Vec<std::path::PathBuf> {
+pub fn rule_pack_dirs() -> Vec<std::path::PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
@@ -147,5 +147,10 @@ fn rule_pack_dirs() -> Vec<std::path::PathBuf> {
     }
     dirs.push(std::path::PathBuf::from("src-tauri/rule_packs"));
     dirs.push(std::path::PathBuf::from("rule_packs"));
+    dirs.push(user_rule_pack_dir());
     dirs
+}
+
+pub fn user_rule_pack_dir() -> std::path::PathBuf {
+    AppState::data_root().join("rule_packs")
 }

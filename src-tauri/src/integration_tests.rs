@@ -64,7 +64,7 @@ fn frame_hash(img: &RgbaImage) -> String {
 struct FakeSession {
     dir: tempfile::TempDir,
     log: EventLog,
-    session_id: Uuid,
+    _session_id: Uuid,
 }
 
 impl FakeSession {
@@ -81,7 +81,7 @@ impl FakeSession {
             host_os: "test".into(),
         })
         .unwrap();
-        FakeSession { dir, log, session_id }
+        FakeSession { dir, log, _session_id: session_id }
     }
 
     fn root(&self) -> &Path {

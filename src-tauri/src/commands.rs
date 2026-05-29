@@ -8,8 +8,10 @@ use crate::capture::{engine, monitor};
 use crate::config::{CaptureCfg, ProjectConfig};
 use crate::document::{render_to_file, RenderRequest, StepView};
 use crate::events::{event::SessionPaths, log as event_log, EventKind, EventLog};
-use crate::state::{ActiveSession, AppState, Session};
+use crate::rules::engine::RulePack;
+use crate::state::{load_rule_engine, ActiveSession, AppState, Session};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
@@ -83,7 +85,7 @@ pub async fn start_capture(
 
     // Start input hooks (mouse + keyboard) on a dedicated OS thread.
     {
-        let mut guard = state.lock().await;
+        let guard = state.lock().await;
         let state_for_hooks: SharedState = (*state.inner()).clone();
         let hook = crate::capture::input::start_input_hooks(state_for_hooks);
         if let Some(active) = &guard.active {
@@ -238,7 +240,10 @@ pub async fn update_settings(
     let mut guard = state.lock().await;
     guard.config.capture = settings;
     // Persist
-    let _ = guard.config.write(&AppState::config_path());
+    guard
+        .config
+        .write(&AppState::config_path())
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -246,6 +251,152 @@ pub async fn update_settings(
 pub async fn get_config(state: State<'_, SharedState>) -> Result<ProjectConfig, String> {
     let guard = state.lock().await;
     Ok(guard.config.clone())
+}
+
+#[derive(Debug, Serialize)]
+pub struct RulePackSummary {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub path: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveRulePackRequest {
+    pub pack: RulePack,
+    pub filename: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleRulePackRequest {
+    pub path: String,
+    pub enabled: bool,
+}
+
+fn rule_pack_config_key(path: &std::path::Path) -> String {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if let Some(file_name) = canonical.file_name().and_then(|f| f.to_str()) {
+        return file_name.to_string();
+    }
+    canonical.to_string_lossy().into_owned()
+}
+
+#[tauri::command]
+pub async fn toggle_rule_pack(
+    req: ToggleRulePackRequest,
+    state: State<'_, SharedState>,
+) -> Result<(), String> {
+    let mut guard = state.lock().await;
+    let path = std::path::Path::new(&req.path);
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let file_name = canonical
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let config_key = rule_pack_config_key(&canonical);
+
+    if req.enabled {
+        if !guard.config.rules.packs.contains(&config_key) {
+            guard.config.rules.packs.push(config_key.clone());
+        }
+    } else {
+        let canonical_str = canonical.to_string_lossy();
+        guard.config.rules.packs.retain(|p| {
+            p != &config_key && p != &file_name && p != canonical_str.as_ref()
+        });
+    }
+
+    guard
+        .config
+        .write(&AppState::config_path())
+        .map_err(|e| e.to_string())?;
+    guard.rule_engine = if guard.config.capture.redact_pii {
+        load_rule_engine(&guard.config)
+    } else {
+        None
+    };
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_rule_packs(
+    state: State<'_, SharedState>,
+) -> Result<Vec<RulePackSummary>, String> {
+    let guard = state.lock().await;
+    let enabled_packs = guard.config.rules.packs.clone();
+    drop(guard);
+
+    let mut summaries = Vec::new();
+    let mut seen_paths = HashSet::new();
+
+    for dir in crate::state::rule_pack_dirs() {
+        if !dir.exists() {
+            continue;
+        }
+        let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let canonical = path.canonicalize().unwrap_or(path.clone());
+            if !seen_paths.insert(canonical.clone()) {
+                continue;
+            }
+            let bytes = std::fs::read(&canonical).map_err(|e| e.to_string())?;
+            let pack: RulePack = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            let file_name = canonical
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or_default()
+                .to_string();
+            let canonical_str = canonical.to_string_lossy().to_string();
+            let enabled = enabled_packs
+                .iter()
+                .any(|p| p == &file_name || p == &canonical_str);
+            summaries.push(RulePackSummary {
+                name: pack.name,
+                version: pack.version,
+                description: pack.description,
+                path: canonical.to_string_lossy().into_owned(),
+                enabled,
+            });
+        }
+    }
+
+    Ok(summaries)
+}
+
+#[tauri::command]
+pub async fn save_rule_pack(
+    req: SaveRulePackRequest,
+    state: State<'_, SharedState>,
+) -> Result<String, String> {
+    let mut guard = state.lock().await;
+    let dir = crate::state::user_rule_pack_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let filename = if let Some(name) = req.filename.clone() {
+        name
+    } else {
+        format!("{}-{}.json", req.pack.name, req.pack.version)
+    };
+
+    let path = dir.join(&filename);
+    let json = serde_json::to_string_pretty(&req.pack).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+
+    if !guard.config.rules.packs.contains(&filename) {
+        guard.config.rules.packs.push(filename.clone());
+        guard
+            .config
+            .write(&AppState::config_path())
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

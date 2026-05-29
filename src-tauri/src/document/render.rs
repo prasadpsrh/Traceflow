@@ -224,6 +224,7 @@ pub fn project_steps_for_ui(records: &[crate::events::EventRecord], frames_dir: 
 }
 
 /// Quickly compute a default save path for an export.
+#[allow(dead_code)]
 pub fn default_output_path(root: &Path, title: &str, ext: &str) -> PathBuf {
     let safe: String = title
         .chars()

@@ -54,6 +54,7 @@ pub struct RulePack {
 
 /// One match.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Hit {
     pub rule_name: String,
     pub action: RuleAction,
@@ -141,6 +142,7 @@ impl RuleEngine {
         hits
     }
 
+    #[allow(dead_code)]
     pub fn pack_names(&self) -> &[String] {
         &self.pack_names
     }

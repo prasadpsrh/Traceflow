@@ -14,6 +14,5 @@ pub mod chain;
 pub mod event;
 pub mod log;
 
-pub use chain::ChainHasher;
 pub use event::{EventKind, EventRecord};
 pub use log::EventLog;
