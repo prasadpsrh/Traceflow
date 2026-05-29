@@ -172,12 +172,18 @@ mod platform {
                         if !inner.stop.load(Ordering::SeqCst) {
                             let state = inner.state.clone();
                             inner.rt.spawn(async move {
-                                let guard = state.lock().await;
-                                if let Some(active) = &guard.active {
-                                    let _ = active.log.append(EventKind::MouseClick {
-                                        x,
-                                        y,
-                                        button: btn,
+                                let maybe_log = {
+                                    let guard = state.lock().await;
+                                    guard.active.as_ref().map(|a| a.log.clone())
+                                };
+                                if let Some(log) = maybe_log {
+                                    let btn = btn.clone();
+                                    tokio::task::spawn_blocking(move || {
+                                        let _ = log.append(EventKind::MouseClick {
+                                            x,
+                                            y,
+                                            button: btn,
+                                        });
                                     });
                                 }
                             });
@@ -240,18 +246,27 @@ mod platform {
                     let state = inner.state.clone();
                     let title = window_title.clone();
                     let app = app_name.clone();
-                    inner.rt.spawn(async move {
-                        let guard = state.lock().await;
-                        if guard.is_recording {
-                            if let Some(active) = &guard.active {
-                                let _ = active.log.append(EventKind::WindowFocusChanged {
-                                    window_title: title,
-                                    window_class: None,
-                                    app_name: app,
-                                });
-                            }
-                        }
-                    });
+                            inner.rt.spawn(async move {
+                                let maybe_log = {
+                                    let guard = state.lock().await;
+                                    if guard.is_recording {
+                                        guard.active.as_ref().map(|a| a.log.clone())
+                                    } else {
+                                        None
+                                    }
+                                };
+                                if let Some(log) = maybe_log {
+                                    let title = title.clone();
+                                    let app = app.clone();
+                                    tokio::task::spawn_blocking(move || {
+                                        let _ = log.append(EventKind::WindowFocusChanged {
+                                            window_title: title,
+                                            window_class: None,
+                                            app_name: app,
+                                        });
+                                    });
+                                }
+                            });
                 }
             }
         });
@@ -274,10 +289,16 @@ mod platform {
                             let state = inner.state.clone();
                             let vk = vk.to_string();
                             inner.rt.spawn(async move {
-                                let guard = state.lock().await;
-                                if let Some(active) = &guard.active {
-                                    let _ = active.log.append(EventKind::KeyboardInput {
-                                        virtual_key: vk,
+                                let maybe_log = {
+                                    let guard = state.lock().await;
+                                    guard.active.as_ref().map(|a| a.log.clone())
+                                };
+                                if let Some(log) = maybe_log {
+                                    let vk = vk.clone();
+                                    tokio::task::spawn_blocking(move || {
+                                        let _ = log.append(EventKind::KeyboardInput {
+                                            virtual_key: vk,
+                                        });
                                     });
                                 }
                             });

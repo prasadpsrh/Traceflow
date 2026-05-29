@@ -238,7 +238,10 @@ pub async fn update_settings(
     let mut guard = state.lock().await;
     guard.config.capture = settings;
     // Persist
-    let _ = guard.config.write(&AppState::config_path());
+    guard
+        .config
+        .write(&AppState::config_path())
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
