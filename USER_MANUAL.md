@@ -63,7 +63,9 @@ Each recording session produces an **append-only event log** (`events.ndjson`) w
 
 **Top bar** — shows the current session ID (first 8 characters) so you can match it to the exported document.
 
-**Sidebar** — contains all controls: capture settings, session history, export buttons, and chain verification.
+**Sidebar** — contains all controls: capture settings, session history, export buttons, settings, and chain verification.
+
+**Settings tab** — opens the rule pack manager and quick builder. This is where you can enable or disable any installed pack, refresh the pack list, or create a new custom pack without directly editing JSON.
 
 **Step gallery** — shows every captured screenshot as a thumbnail. Click any step to view it full-size and edit its description.
 
@@ -111,6 +113,22 @@ All settings take effect from the **next** recording session. They are persisted
 | **Language** | English | Language hint for OCR and AI descriptions |
 | **AI step descriptions** | On | Automatically generates a heading for each step from the window title and app name |
 | **Auto-redact PII & passwords** | On | Runs OCR on each frame and blurs/masks any text matching the active rule packs |
+
+### Rule pack manager
+Open the **Settings** tab to review installed rule packs and manage which packs are active for new recording sessions.
+
+- Installed packs appear with an enabled/disabled state.
+- Click **Enable** to activate a pack for future recordings.
+- Click **Disable** to deactivate a pack without deleting the file.
+- Click **Refresh** after adding rule pack JSON files externally so Traceflow re-scans the available packs.
+
+### Quick rule builder
+The Settings tab also includes a wizard for creating a custom rule pack.
+
+- Enter a pack name, version, and description.
+- Define a single rule with a name, regex pattern, action, and severity.
+- Click **Save rule pack** to write it into your user pack directory.
+- The new pack is automatically added to the active pack list when saved.
 
 ### Sensitivity guide
 
@@ -334,6 +352,14 @@ Rule packs are JSON files that define what counts as sensitive information. They
    packs = ["general_pii.json", "secrets.json", "my_company.json"]
    ```
 3. Restart a recording session — packs are loaded at session start.
+
+### In-app pack management
+You can also manage rule packs directly in Traceflow's **Settings** tab.
+
+- Installed packs are listed with an enabled/disabled state.
+- Use the **Enable** / **Disable** buttons to change activation without editing config files.
+- Use **Refresh** after adding or removing JSON files from the rule pack directories.
+- Use the quick builder to save a custom rule pack to your user pack directory.
 
 ---
 
