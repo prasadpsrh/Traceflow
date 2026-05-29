@@ -98,7 +98,7 @@ impl Default for AppState {
 
 /// Load and compile all rule packs listed in `config.rules.packs`.
 /// Returns `None` if no packs are configured or all fail to load.
-fn load_rule_engine(config: &ProjectConfig) -> Option<Arc<RuleEngine>> {
+pub fn load_rule_engine(config: &ProjectConfig) -> Option<Arc<RuleEngine>> {
     if config.rules.packs.is_empty() {
         return None;
     }

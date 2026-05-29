@@ -9,7 +9,7 @@ use crate::config::{CaptureCfg, ProjectConfig};
 use crate::document::{render_to_file, RenderRequest, StepView};
 use crate::events::{event::SessionPaths, log as event_log, EventKind, EventLog};
 use crate::rules::engine::RulePack;
-use crate::state::{ActiveSession, AppState, Session};
+use crate::state::{ActiveSession, AppState, Session, load_rule_engine};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
