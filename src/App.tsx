@@ -6,6 +6,7 @@ import CaptureControl from "./components/CaptureControl";
 import StepGallery from "./components/StepGallery";
 import ExportPanel from "./components/ExportPanel";
 import SessionHistory from "./components/SessionHistory";
+import SettingsPanel, { RulePackForm, RulePackSummary } from "./components/SettingsPanel";
 import ToastStack, { ToastMessage } from "./components/Toast";
 
 export interface StepView {
@@ -72,11 +73,23 @@ export default function App() {
     keep_all_frames: false,
     monitor_index: 0,
   });
+  const [activeTab, setActiveTab] = useState<"capture" | "settings">("capture");
+  const [rulePacks, setRulePacks] = useState<RulePackSummary[]>([]);
+
+  const refreshRulePacks = useCallback(async () => {
+    try {
+      const packs = await invoke<RulePackSummary[]>("list_rule_packs");
+      setRulePacks(packs);
+    } catch (e) {
+      console.error("Could not load rule packs", e);
+    }
+  }, []);
 
   useEffect(() => {
     invoke<MonitorInfo[]>("list_monitors").then(setMonitors).catch(console.error);
     invoke<CaptureSettings>("get_settings").then(setSettings).catch(console.error);
-  }, []);
+    refreshRulePacks();
+  }, [refreshRulePacks]);
 
   // When a step is captured, re-fetch the projected step list (cheap and authoritative)
   useEffect(() => {
@@ -160,6 +173,29 @@ export default function App() {
     }
   };
 
+  const handleSaveRulePack = async (pack: RulePackForm) => {
+    try {
+      await invoke<string>("save_rule_pack", {
+        pack,
+        filename: `${pack.name}-${pack.version}.json`,
+      });
+      toast("Saved rule pack", "success");
+      refreshRulePacks();
+    } catch (e) {
+      toast(`Could not save rule pack: ${e}`, "error");
+    }
+  };
+
+  const handleToggleRulePack = async (path: string, enabled: boolean) => {
+    try {
+      await invoke("toggle_rule_pack", { path, enabled });
+      toast(`Rule pack ${enabled ? "enabled" : "disabled"}`, "success");
+      refreshRulePacks();
+    } catch (e) {
+      toast(`Could not update rule pack: ${e}`, "error");
+    }
+  };
+
   return (
     <div className="app-shell">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -211,24 +247,52 @@ export default function App() {
         </aside>
 
         <main className="workspace">
-          <div className="section-eyebrow">Captured steps</div>
-          <h2 className="section-title">{sessionTitle || <em>Untitled</em>}</h2>
-          {steps.length === 0 ? (
-            <div className="empty">
-              <div className="empty-glyph">∅</div>
-              <div className="empty-title">No steps yet</div>
-              <p className="empty-sub helper">
-                Start a capture session, then walk through any workflow — an installer,
-                a configuration screen, a procedure. Traceflow appends each meaningful
-                change to a tamper-evident event log, then renders it into the document
-                format you choose.
-              </p>
-            </div>
+          <div className="panel-tabs">
+            <button
+              type="button"
+              className={activeTab === "capture" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("capture")}
+            >
+              Capture
+            </button>
+            <button
+              type="button"
+              className={activeTab === "settings" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("settings")}
+            >
+              Settings
+            </button>
+          </div>
+
+          {activeTab === "capture" ? (
+            <>
+              <div className="section-eyebrow">Captured steps</div>
+              <h2 className="section-title">{sessionTitle || <em>Untitled</em>}</h2>
+              {steps.length === 0 ? (
+                <div className="empty">
+                  <div className="empty-glyph">∅</div>
+                  <div className="empty-title">No steps yet</div>
+                  <p className="empty-sub helper">
+                    Start a capture session, then walk through any workflow — an installer,
+                    a configuration screen, a procedure. Traceflow appends each meaningful
+                    change to a tamper-evident event log, then renders it into the document
+                    format you choose.
+                  </p>
+                </div>
+              ) : (
+                <StepGallery
+                  steps={steps}
+                  onDelete={handleDeleteStep}
+                  onUpdateDescription={handleUpdateDescription}
+                />
+              )}
+            </>
           ) : (
-            <StepGallery
-              steps={steps}
-              onDelete={handleDeleteStep}
-              onUpdateDescription={handleUpdateDescription}
+            <SettingsPanel
+              rulePacks={rulePacks}
+              onSaveRulePack={handleSaveRulePack}
+              onTogglePack={handleToggleRulePack}
+              onRefreshPacks={refreshRulePacks}
             />
           )}
         </main>
