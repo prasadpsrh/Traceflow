@@ -83,7 +83,7 @@ pub async fn start_capture(
 
     // Start input hooks (mouse + keyboard) on a dedicated OS thread.
     {
-        let mut guard = state.lock().await;
+        let guard = state.lock().await;
         let state_for_hooks: SharedState = (*state.inner()).clone();
         let hook = crate::capture::input::start_input_hooks(state_for_hooks);
         if let Some(active) = &guard.active {
