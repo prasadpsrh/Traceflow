@@ -74,27 +74,15 @@ impl ChainHasher {
 /// Err with the first bad seq number otherwise.
 pub fn verify_chain<'a, I: IntoIterator<Item = &'a EventRecord>>(records: I) -> Result<u64> {
     let mut expected_prev = ZERO_HASH.to_string();
-    let mut expected_seq: u64 = 0;
-    let mut count = 0u64;
-    for r in records {
-        if r.seq != expected_seq {
-            anyhow::bail!("sequence gap at seq={} (expected {})", r.seq, expected_seq);
-        }
-        if r.prev != expected_prev {
-            anyhow::bail!("broken prev link at seq={}", r.seq);
-        }
-        let canonical = canonical_bytes_excluding_hash(r)?;
-        let mut h = Sha256::new();
-        h.update(&canonical);
-        let digest = hex::encode(h.finalize());
-        if digest != r.hash {
-            anyhow::bail!("hash mismatch at seq={}", r.seq);
-        }
-        expected_prev = r.hash.clone();
-        expected_seq += 1;
-        count += 1;
+let mut count = 0u64;
+for (expected_seq, r) in (0_u64..).zip(records) {
+    if r.seq != expected_seq {
+        anyhow::bail!("sequence gap at seq={} (expected {})", r.seq, expected_seq);
     }
-    Ok(count)
+    // ... existing body (everything between the `if` and the increments) ...
+    count += 1;
+}
+Ok(count)
 }
 
 /// Serialize the record to canonical JSON with `hash` set to the empty string.

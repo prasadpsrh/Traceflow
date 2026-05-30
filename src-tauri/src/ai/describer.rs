@@ -119,7 +119,7 @@ fn describe_browser_step(title: &str, frame: &RgbaImage) -> String {
         return format!("Modal dialog on — {page}");
     }
 
-    format!("{page}")
+    page.to_string()
 }
 
 /// Extract the page title from a browser window title.

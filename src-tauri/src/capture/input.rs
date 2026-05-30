@@ -76,7 +76,7 @@ mod platform {
     // Thread-local used to pass shared context into the hook callbacks.
     thread_local! {
         static HOOK_STATE: std::cell::RefCell<Option<Arc<SharedStateInner>>> =
-            std::cell::RefCell::new(None);
+            const {std::cell::RefCell::new(None)};
     }
 
     struct SharedStateInner {
@@ -194,7 +194,7 @@ mod platform {
         _id_thread: u32,
         _event_time: u32,
     ) {
-        if hwnd == std::ptr::null_mut() {
+        if hwnd.is_null()  {
             return;
         }
 
