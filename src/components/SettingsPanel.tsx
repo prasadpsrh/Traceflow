@@ -1,274 +1,204 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type { PackSummary, Rule, RulePack, WizardPreset } from "../types";
+import WizardGrid from "./settings/WizardGrid";
+import RuleBuilderForm from "./settings/RuleBuilderForm";
+import CustomRuleList from "./settings/CustomRuleList";
 
-export interface RulePackAction {
-  type: "mask" | "black_box" | "blur" | "drop" | "flag";
-  replacement?: string;
-}
+type Mode = "list" | "wizard" | "builder";
 
-export interface RuleDefinition {
-  name: string;
-  pattern: string;
-  action: RulePackAction;
-  description: string;
-  severity: string;
-  validator?: string;
-}
+export default function SettingsPanel() {
+  const [mode, setMode] = useState<Mode>("list");
+  const [packs, setPacks] = useState<PackSummary[]>([]);
+  const [active, setActive] = useState<string[]>([]);
+  const [customPack, setCustomPack] = useState<RulePack | null>(null);
+  const [presets, setPresets] = useState<WizardPreset[]>([]);
+  const [editPreset, setEditPreset] = useState<WizardPreset | null>(null);
+  const [busy, setBusy] = useState(false);
 
-export interface RulePackForm {
-  name: string;
-  version: string;
-  description: string;
-  rules: RuleDefinition[];
-}
-
-export interface RulePackSummary {
-  name: string;
-  version: string;
-  description: string;
-  path: string;
-  enabled: boolean;
-}
-
-interface SettingsPanelProps {
-  rulePacks: RulePackSummary[];
-  onSaveRulePack: (pack: RulePackForm) => Promise<void>;
-  onTogglePack: (path: string, enabled: boolean) => Promise<void>;
-  onRefreshPacks: () => void;
-}
-
-const defaultRulePack: RulePackForm = {
-  name: "custom_pii",
-  version: "1.0",
-  description: "Custom user-defined rule pack",
-  rules: [
-    {
-      name: "Sensitive pattern",
-      pattern: "",
-      action: { type: "mask", replacement: "[REDACTED]" },
-      description: "Mask matching sensitive text.",
-      severity: "warning",
-      validator: "",
-    },
-  ],
-};
-
-export default function SettingsPanel({ rulePacks, onSaveRulePack, onTogglePack, onRefreshPacks }: SettingsPanelProps) {
-  const [form, setForm] = useState<RulePackForm>(defaultRulePack);
-  const [saving, setSaving] = useState(false);
-
-  const currentRule = form.rules[0];
-
-  const canSave = useMemo(
-    () =>
-      form.name.trim().length > 0 &&
-      form.version.trim().length > 0 &&
-      currentRule.name.trim().length > 0 &&
-      currentRule.pattern.trim().length > 0,
-    [form, currentRule]
-  );
-
-  const handleField = (field: keyof RulePackForm, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleRuleField = (field: keyof RuleDefinition, value: string) => {
-    setForm((current) => ({
-      ...current,
-      rules: [
-        {
-          ...current.rules[0],
-          [field]: value,
-        },
-      ],
-    }));
-  };
-
-  const handleActionType = (value: RulePackAction["type"]) => {
-    setForm((current) => ({
-      ...current,
-      rules: [
-        {
-          ...current.rules[0],
-          action: { type: value, replacement: current.rules[0].action.replacement },
-        },
-      ],
-    }));
-  };
-
-  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!canSave) return;
-
-    setSaving(true);
+  const refresh = async () => {
     try {
-      await onSaveRulePack(form);
-      setForm(defaultRulePack);
-    } finally {
-      setSaving(false);
+      const [p, a, c, w] = await Promise.all([
+        invoke<PackSummary[]>("list_rule_packs"),
+        invoke<string[]>("rule_packs_active"),
+        invoke<RulePack>("custom_rules_get"),
+        invoke<WizardPreset[]>("rule_wizard_presets"),
+      ]);
+      setPacks(p);
+      setActive(a);
+      setCustomPack(c);
+      setPresets(w);
+    } catch (e) {
+      console.error("Failed to load settings:", e);
     }
   };
 
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const togglePack = async (fileName: string) => {
+    try {
+      await invoke("toggle_rule_pack", { fileName });
+      await refresh();
+    } catch (e) {
+      alert(`Could not toggle pack: ${e}`);
+    }
+  };
+
+  const handleImport = async () => {
+    const path = await open({
+      title: "Import rule pack",
+      filters: [{ name: "Rule pack (JSON)", extensions: ["json"] }],
+    });
+    if (!path || typeof path !== "string") return;
+    setBusy(true);
+    try {
+      await invoke("rule_pack_import", { srcPath: path });
+      await refresh();
+    } catch (e) {
+      alert(`Import failed: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExport = async (pack: PackSummary) => {
+    const path = await save({
+      title: "Export rule pack",
+      defaultPath: pack.file_name,
+      filters: [{ name: "Rule pack (JSON)", extensions: ["json"] }],
+    });
+    if (!path) return;
+    try {
+      await invoke("rule_pack_export", {
+        fileName: pack.file_name,
+        destPath: path,
+      });
+    } catch (e) {
+      alert(`Export failed: ${e}`);
+    }
+  };
+
+  const handleAddRule = async (rule: Rule) => {
+    try {
+      const next = await invoke<RulePack>("custom_rule_add", { rule });
+      setCustomPack(next);
+      setMode("list");
+      setEditPreset(null);
+    } catch (e) {
+      alert(`Could not save rule: ${e}`);
+    }
+  };
+
+  const handleRemoveRule = async (name: string) => {
+    if (!confirm(`Remove rule "${name}"?`)) return;
+    try {
+      const next = await invoke<RulePack>("custom_rule_remove", { ruleName: name });
+      setCustomPack(next);
+    } catch (e) {
+      alert(`Could not remove rule: ${e}`);
+    }
+  };
+
+  if (mode === "builder") {
+    return (
+      <RuleBuilderForm
+        initial={editPreset?.rule ?? null}
+        onCancel={() => {
+          setMode("list");
+          setEditPreset(null);
+        }}
+        onSubmit={handleAddRule}
+      />
+    );
+  }
+
+  if (mode === "wizard") {
+    return (
+      <WizardGrid
+        presets={presets}
+        onPick={(p) => {
+          setEditPreset(p);
+          setMode("builder");
+        }}
+        onCancel={() => setMode("list")}
+      />
+    );
+  }
+
   return (
-    <section className="settings-panel">
-      <div className="section-eyebrow">Settings</div>
-      <h2 className="section-title">Rule packs & builder</h2>
-      <p className="section-copy">
-        Manage built-in and custom rule packs, then use the quick builder to create a
-        new pattern-based rule.
+    <div className="settings-panel">
+      <h2 className="section-title">Redaction rules</h2>
+      <p className="helper">
+        Rule packs define what gets redacted from captured screenshots and event text.
+        Toggle the packs you want active. Built-in packs are read-only — add your own
+        rules below or import a pack from a colleague.
       </p>
 
-      <div className="settings-grid">
-        <div className="settings-card">
-          <div className="card-header">
-            <div>
-              <h3>Installed rule packs</h3>
-              <p className="helper">Each JSON pack is scanned from configured rule-pack directories.</p>
-            </div>
-            <button type="button" className="secondary" onClick={onRefreshPacks}>
-              Refresh
-            </button>
-          </div>
-          {rulePacks.length === 0 ? (
-            <div className="empty-card">No rule packs found yet.</div>
-          ) : (
-            <div className="rule-pack-list">
-              {rulePacks.map((pack) => (
-                <div className="rule-pack-item" key={pack.path}>
-                  <div>
-                    <strong>{pack.name}</strong> <span className="muted">v{pack.version}</span>
-                    <div className="rule-pack-description">{pack.description}</div>
+      <section className="settings-section">
+        <h3 className="section-eyebrow">Available packs</h3>
+        <div className="pack-list">
+          {packs.map((p) => {
+            const isActive = active.includes(p.file_name);
+            return (
+              <div key={p.file_name} className={`pack-row ${isActive ? "active" : ""}`}>
+                <div className="pack-info">
+                  <div className="pack-name">
+                    {p.name}
+                    <span className={`pack-badge ${p.is_builtin ? "builtin" : "user"}`}>
+                      {p.is_builtin ? "BUILT-IN" : "CUSTOM"}
+                    </span>
                   </div>
-                  <div className="rule-pack-actions">
-                    <div className={`status-pill ${pack.enabled ? "enabled" : "disabled"}`}>
-                      {pack.enabled ? "Enabled" : "Available"}
-                    </div>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => onTogglePack(pack.path, !pack.enabled)}
-                    >
-                      {pack.enabled ? "Disable" : "Enable"}
-                    </button>
+                  {p.description && <div className="pack-desc helper">{p.description}</div>}
+                  <div className="pack-meta">
+                    v{p.version} · {p.rule_count} rule{p.rule_count === 1 ? "" : "s"}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="settings-card">
-          <div className="card-header">
-            <div>
-              <h3>Quick rule builder</h3>
-              <p className="helper">Create a new rule pack with one pattern and save it to user space.</p>
-            </div>
-          </div>
-
-          <form className="rule-builder" onSubmit={handleSave}>
-            <label>
-              Pack name
-              <input
-                value={form.name}
-                onChange={(event) => handleField("name", event.target.value)}
-                placeholder="custom_pii"
-              />
-            </label>
-            <label>
-              Version
-              <input
-                value={form.version}
-                onChange={(event) => handleField("version", event.target.value)}
-                placeholder="1.0"
-              />
-            </label>
-            <label>
-              Description
-              <input
-                value={form.description}
-                onChange={(event) => handleField("description", event.target.value)}
-                placeholder="Mask user-defined sensitive text"
-              />
-            </label>
-
-            <fieldset className="rule-section">
-              <legend>Rule definition</legend>
-              <label>
-                Rule name
-                <input
-                  value={currentRule.name}
-                  onChange={(event) => handleRuleField("name", event.target.value)}
-                />
-              </label>
-              <label>
-                Match pattern
-                <input
-                  value={currentRule.pattern}
-                  onChange={(event) => handleRuleField("pattern", event.target.value)}
-                  placeholder="(?i)password|secret"
-                />
-              </label>
-              <div className="field-row">
-                <label>
-                  Action
-                  <select
-                    value={currentRule.action.type}
-                    onChange={(event) => handleActionType(event.target.value as RulePackAction["type"])}
-                  >
-                    <option value="mask">Mask</option>
-                    <option value="black_box">Black box</option>
-                    <option value="blur">Blur</option>
-                    <option value="drop">Drop</option>
-                    <option value="flag">Flag</option>
-                  </select>
-                </label>
-                <label>
-                  Replacement text
-                  <input
-                    value={currentRule.action.replacement ?? ""}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        rules: [
-                          {
-                            ...current.rules[0],
-                            action: {
-                              ...current.rules[0].action,
-                              replacement: event.target.value,
-                            },
-                          },
-                        ],
-                      }))
-                    }
-                    disabled={currentRule.action.type !== "mask"}
-                    placeholder="[REDACTED]"
-                  />
-                </label>
+                <div className="pack-actions">
+                  <button className="btn-tiny" onClick={() => togglePack(p.file_name)}>
+                    {isActive ? "Disable" : "Enable"}
+                  </button>
+                  <button className="btn-tiny" onClick={() => handleExport(p)}>
+                    Export
+                  </button>
+                </div>
               </div>
-              <label>
-                Severity
-                <input
-                  value={currentRule.severity}
-                  onChange={(event) => handleRuleField("severity", event.target.value)}
-                />
-              </label>
-              <label>
-                Rule description
-                <textarea
-                  rows={3}
-                  value={currentRule.description}
-                  onChange={(event) => handleRuleField("description", event.target.value)}
-                />
-              </label>
-            </fieldset>
-
-            <div className="form-actions">
-              <button type="submit" className="primary" disabled={!canSave || saving}>
-                {saving ? "Saving…" : "Save rule pack"}
-              </button>
-            </div>
-          </form>
+            );
+          })}
         </div>
-      </div>
-    </section>
+        <div className="action-row">
+          <button className="btn btn-ghost" onClick={handleImport} disabled={busy}>
+            ↥ Import pack from file
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3 className="section-eyebrow">Your custom rules</h3>
+        <CustomRuleList pack={customPack} onRemove={handleRemoveRule} />
+        <div className="action-row">
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setEditPreset(null);
+              setMode("wizard");
+            }}
+          >
+            ✨ Add with wizard
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setEditPreset(null);
+              setMode("builder");
+            }}
+          >
+            ⚙ Advanced builder
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }

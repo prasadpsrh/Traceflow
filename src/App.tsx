@@ -6,7 +6,7 @@ import CaptureControl from "./components/CaptureControl";
 import StepGallery from "./components/StepGallery";
 import ExportPanel from "./components/ExportPanel";
 import SessionHistory from "./components/SessionHistory";
-import SettingsPanel, { RulePackForm, RulePackSummary } from "./components/SettingsPanel";
+import SettingsPanel from "./components/SettingsPanel";
 import ToastStack, { ToastMessage } from "./components/Toast";
 
 export interface StepView {
@@ -74,22 +74,12 @@ export default function App() {
     monitor_index: 0,
   });
   const [activeTab, setActiveTab] = useState<"capture" | "settings">("capture");
-  const [rulePacks, setRulePacks] = useState<RulePackSummary[]>([]);
 
-  const refreshRulePacks = useCallback(async () => {
-    try {
-      const packs = await invoke<RulePackSummary[]>("list_rule_packs");
-      setRulePacks(packs);
-    } catch (e) {
-      console.error("Could not load rule packs", e);
-    }
-  }, []);
 
   useEffect(() => {
-    invoke<MonitorInfo[]>("list_monitors").then(setMonitors).catch(console.error);
-    invoke<CaptureSettings>("get_settings").then(setSettings).catch(console.error);
-    refreshRulePacks();
-  }, [refreshRulePacks]);
+  invoke<MonitorInfo[]>("list_monitors").then(setMonitors).catch(console.error);
+  invoke<CaptureSettings>("get_settings").then(setSettings).catch(console.error);
+}, []);
 
   // When a step is captured, re-fetch the projected step list (cheap and authoritative)
   useEffect(() => {
@@ -173,29 +163,7 @@ export default function App() {
     }
   };
 
-  const handleSaveRulePack = async (pack: RulePackForm) => {
-    try {
-      await invoke<string>("save_rule_pack", {
-        pack,
-        filename: `${pack.name}-${pack.version}.json`,
-      });
-      toast("Saved rule pack", "success");
-      refreshRulePacks();
-    } catch (e) {
-      toast(`Could not save rule pack: ${e}`, "error");
-    }
-  };
-
-  const handleToggleRulePack = async (path: string, enabled: boolean) => {
-    try {
-      await invoke("toggle_rule_pack", { path, enabled });
-      toast(`Rule pack ${enabled ? "enabled" : "disabled"}`, "success");
-      refreshRulePacks();
-    } catch (e) {
-      toast(`Could not update rule pack: ${e}`, "error");
-    }
-  };
-
+  
   return (
     <div className="app-shell">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -288,12 +256,7 @@ export default function App() {
               )}
             </>
           ) : (
-            <SettingsPanel
-              rulePacks={rulePacks}
-              onSaveRulePack={handleSaveRulePack}
-              onTogglePack={handleToggleRulePack}
-              onRefreshPacks={refreshRulePacks}
-            />
+            <SettingsPanel  />
           )}
         </main>
       </div>

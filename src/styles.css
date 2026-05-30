@@ -621,3 +621,154 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 0; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+
+
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   Sprint 1 — Phase 1 UX restoration
+   Wizard, rule builder, custom rule list, pack management
+   ════════════════════════════════════════════════════════════════════════ */
+
+.settings-panel { padding: 8px 4px 24px; }
+.settings-section { margin-top: 28px; }
+.action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+/* ── Pack list ────────────────────────────────────────────────────────────── */
+.pack-list { display: flex; flex-direction: column; gap: 8px; }
+.pack-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  transition: border-color 0.15s;
+}
+.pack-row.active {
+  border-color: var(--accent);
+  background: linear-gradient(0deg, rgba(195, 60, 31, 0.03), transparent);
+}
+.pack-info { flex: 1; }
+.pack-name {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 500; color: var(--ink);
+}
+.pack-badge {
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.14em;
+  padding: 2px 6px; border-radius: 2px;
+}
+.pack-badge.builtin { background: var(--paper-deep); color: var(--ink-mute); border: 1px solid var(--rule); }
+.pack-badge.user { background: var(--accent); color: var(--paper); }
+.pack-desc { margin-top: 4px; font-size: 12px; }
+.pack-meta {
+  margin-top: 4px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-mute); letter-spacing: 0.06em;
+}
+.pack-actions { display: flex; gap: 6px; margin-left: 14px; }
+
+.btn-tiny {
+  background: transparent; border: 1px solid var(--rule); border-radius: 2px;
+  padding: 4px 10px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+  color: var(--ink-soft); cursor: pointer; text-transform: uppercase;
+}
+.btn-tiny:hover { border-color: var(--ink); color: var(--ink); }
+.btn-tiny-danger:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Custom rules ─────────────────────────────────────────────────────────── */
+.custom-rule-list { display: flex; flex-direction: column; gap: 8px; }
+.custom-rule-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: var(--paper);
+  border: 1px solid var(--rule); border-radius: 3px;
+}
+.custom-rule-name {
+  font-family: var(--mono); font-size: 12px; color: var(--ink); font-weight: 500;
+}
+.custom-rule-pattern {
+  margin-top: 4px; font-family: var(--mono); font-size: 11px;
+  color: var(--ink-soft); word-break: break-all;
+}
+.custom-rule-pattern code {
+  background: var(--paper-deep); padding: 2px 6px; border-radius: 2px;
+}
+.empty-inline {
+  padding: 18px; background: var(--paper-deep);
+  border: 1px dashed var(--rule); border-radius: 3px;
+  font-size: 13px; text-align: center;
+}
+
+/* ── Rule builder ─────────────────────────────────────────────────────────── */
+.rule-builder .field { margin-bottom: 18px; }
+.mono-input { font-family: var(--mono) !important; font-size: 13px !important; }
+.pattern-error {
+  margin-top: 6px; padding: 6px 10px;
+  background: rgba(195, 60, 31, 0.08); border-left: 2px solid var(--accent);
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+}
+.pattern-ok {
+  margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--good);
+}
+.match-preview {
+  margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.match-chip {
+  font-family: var(--mono); font-size: 11px;
+  background: rgba(195, 60, 31, 0.08); color: var(--accent);
+  padding: 3px 8px; border-radius: 2px;
+}
+.radio-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.radio-pill {
+  display: inline-flex; align-items: center;
+  padding: 6px 14px; border: 1px solid var(--rule); border-radius: 99px;
+  cursor: pointer; font-size: 12px; text-transform: capitalize;
+  background: var(--paper); transition: all 0.15s;
+}
+.radio-pill input[type="radio"] { display: none; }
+.radio-pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.advanced-toggle { margin-top: 6px; padding: 8px 0; }
+.advanced-toggle summary {
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--ink-mute); cursor: pointer;
+}
+
+/* ── Wizard ───────────────────────────────────────────────────────────────── */
+.wizard-section { margin-bottom: 24px; }
+.wizard-category {
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--ink-mute); margin-bottom: 10px;
+}
+.wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.wizard-card {
+  text-align: left; padding: 14px;
+  background: var(--paper); border: 1px solid var(--rule);
+  border-radius: 3px; cursor: pointer;
+  transition: all 0.15s; font-family: var(--sans);
+}
+.wizard-card:hover {
+  border-color: var(--accent); transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.wizard-card-title { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
+.wizard-card-desc { font-size: 12px; color: var(--ink-soft); line-height: 1.4; margin-bottom: 10px; }
+.wizard-card-example {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-mute); letter-spacing: 0.04em;
+}
+.wizard-card-example code {
+  color: var(--accent); background: rgba(195, 60, 31, 0.06);
+  padding: 1px 5px; border-radius: 2px; margin-left: 4px;
+}
