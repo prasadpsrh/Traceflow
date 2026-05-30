@@ -85,8 +85,16 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
                 stable_streak += 1;
                 if stable_streak >= stability_frames {
                     let (_, cand_frame) = candidate.take().unwrap();
-                    promote_step(&state, &app, cand_frame.clone(), next_index, ai_on, ocr_on, &lang)
-                        .await?;
+                    promote_step(
+                        &state,
+                        &app,
+                        cand_frame.clone(),
+                        next_index,
+                        ai_on,
+                        ocr_on,
+                        &lang,
+                    )
+                    .await?;
                     next_index += 1;
                     reference = Some(diff::fingerprint(&cand_frame));
                     stable_streak = 0;
@@ -96,8 +104,16 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
                 // Promote the in-flight candidate rather than silently dropping
                 // it — this is what prevents fast navigation losing screens.
                 let (old_fp, old_frame) = candidate.take().unwrap();
-                promote_step(&state, &app, old_frame.clone(), next_index, ai_on, ocr_on, &lang)
-                    .await?;
+                promote_step(
+                    &state,
+                    &app,
+                    old_frame.clone(),
+                    next_index,
+                    ai_on,
+                    ocr_on,
+                    &lang,
+                )
+                .await?;
                 next_index += 1;
                 reference = Some(old_fp);
 
@@ -177,8 +193,7 @@ async fn promote_step(
         let lang_str = lang.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let text_regions =
-                crate::ocr::run_ocr_with_text(&frame, &lang_str).unwrap_or_default();
+            let text_regions = crate::ocr::run_ocr_with_text(&frame, &lang_str).unwrap_or_default();
 
             let mut redacted = frame;
             let hits = if let Some(engine) = &rule_engine {
@@ -244,8 +259,7 @@ async fn promote_step(
 
     // ── 6. Emit RedactionApplied events ──────────────────────────────────
     // Group hits by rule name to produce one event per rule per step.
-    let mut by_rule: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut by_rule: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (rule_name, _) in &redaction_hits {
         *by_rule.entry(rule_name.clone()).or_default() += 1;
     }

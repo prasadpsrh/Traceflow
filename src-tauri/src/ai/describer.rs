@@ -55,13 +55,20 @@ fn describe_from_context(
 // ── Browser detection & page-title extraction ─────────────────────────────────
 
 const BROWSER_EXE: &[&str] = &[
-    "chrome", "msedge", "firefox", "opera", "brave", "vivaldi",
-    "iexplore", "safari", "arc", "thorium", "chromium",
+    "chrome", "msedge", "firefox", "opera", "brave", "vivaldi", "iexplore", "safari", "arc",
+    "thorium", "chromium",
 ];
 
 const BROWSER_DISPLAY: &[&str] = &[
-    "google chrome", "microsoft edge", "mozilla firefox", "opera",
-    "brave browser", "vivaldi", "internet explorer", "safari", "arc",
+    "google chrome",
+    "microsoft edge",
+    "mozilla firefox",
+    "opera",
+    "brave browser",
+    "vivaldi",
+    "internet explorer",
+    "safari",
+    "arc",
 ];
 
 fn is_browser_app(app_lc: &str) -> bool {
@@ -167,11 +174,13 @@ fn describe_known_app(app_lc: &str, title: &str) -> Option<String> {
     // File managers
     if app_lc.contains("explorer") && !app_lc.contains("internet") {
         let folder = extract_before_last_dash(title).unwrap_or_else(|| title.to_string());
-        return Some(if folder.is_empty() || folder.to_lowercase() == "file explorer" {
-            "File Explorer".to_string()
-        } else {
-            format!("File Explorer — {folder}")
-        });
+        return Some(
+            if folder.is_empty() || folder.to_lowercase() == "file explorer" {
+                "File Explorer".to_string()
+            } else {
+                format!("File Explorer — {folder}")
+            },
+        );
     }
 
     // Terminals
@@ -241,7 +250,10 @@ fn describe_known_app(app_lc: &str, title: &str) -> Option<String> {
     if app_lc.contains("regedit") {
         return Some("Registry Editor".to_string());
     }
-    if app_lc.contains("msiexec") || title.to_lowercase().contains("setup") || title.to_lowercase().contains("install") {
+    if app_lc.contains("msiexec")
+        || title.to_lowercase().contains("setup")
+        || title.to_lowercase().contains("install")
+    {
         return Some(format!("Installer — {}", title.trim()));
     }
 
@@ -252,7 +264,10 @@ fn describe_known_app(app_lc: &str, title: &str) -> Option<String> {
 
     // Slack / Teams / Zoom / Discord
     if app_lc.contains("slack") {
-        return Some(format!("Slack — {}", extract_before_last_dash(title).unwrap_or_default()));
+        return Some(format!(
+            "Slack — {}",
+            extract_before_last_dash(title).unwrap_or_default()
+        ));
     }
     if app_lc.contains("teams") {
         return Some(format!("Microsoft Teams — {}", title.trim()));
@@ -302,7 +317,9 @@ fn parse_generic_title(title: &str) -> String {
 }
 
 fn extract_before_last_dash(title: &str) -> Option<String> {
-    title.rfind(" - ").map(|pos| title[..pos].trim().to_string())
+    title
+        .rfind(" - ")
+        .map(|pos| title[..pos].trim().to_string())
 }
 
 // ── Image analysis fallback ───────────────────────────────────────────────────

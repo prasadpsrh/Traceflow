@@ -128,7 +128,10 @@ pub(crate) fn load_rule_engine(config: &ProjectConfig) -> Option<Arc<RuleEngine>
     }
 
     if loaded > 0 {
-        log::info!("Rule engine ready: {} rules across {loaded} packs", engine.rule_count());
+        log::info!(
+            "Rule engine ready: {} rules across {loaded} packs",
+            engine.rule_count()
+        );
         Some(Arc::new(engine))
     } else {
         None

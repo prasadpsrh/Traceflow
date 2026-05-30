@@ -24,11 +24,11 @@ mod platform {
     use super::*;
     use sha2::{Digest, Sha256};
     use windows::{
+        core::HSTRING,
         Globalization::Language,
         Graphics::Imaging::{BitmapDecoder, BitmapPixelFormat, SoftwareBitmap},
         Media::Ocr::OcrEngine,
         Storage::Streams::{DataWriter, InMemoryRandomAccessStream},
-        core::HSTRING,
     };
 
     pub fn run(frame: &RgbaImage, language: &str) -> Result<Vec<(String, OcrRegion)>> {
@@ -43,10 +43,7 @@ mod platform {
         // ── Encode frame → PNG → Windows in-memory stream ────────────────
         let mut png = Vec::new();
         frame
-            .write_to(
-                &mut std::io::Cursor::new(&mut png),
-                image::ImageFormat::Png,
-            )
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
             .map_err(|e| anyhow::anyhow!("PNG encode: {e}"))?;
 
         let stream = InMemoryRandomAccessStream::new()?;

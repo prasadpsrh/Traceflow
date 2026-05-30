@@ -53,8 +53,8 @@ pub async fn start_capture(
 
         let log = EventLog::create(&paths.events_log, id).map_err(|e| e.to_string())?;
         // First event: SessionStart with the resolved capture settings.
-        let settings_json = serde_json::to_value(&guard.config.capture)
-            .map_err(|e| e.to_string())?;
+        let settings_json =
+            serde_json::to_value(&guard.config.capture).map_err(|e| e.to_string())?;
         log.append(EventKind::SessionStart {
             title: title.clone(),
             capture_settings: settings_json,
@@ -145,9 +145,7 @@ pub async fn stop_capture(state: State<'_, SharedState>) -> Result<Session, Stri
 }
 
 #[tauri::command]
-pub async fn get_session_steps(
-    state: State<'_, SharedState>,
-) -> Result<Vec<StepView>, String> {
+pub async fn get_session_steps(state: State<'_, SharedState>) -> Result<Vec<StepView>, String> {
     let guard = state.lock().await;
     if let Some(active) = &guard.active {
         let log_path = active.log.path().to_path_buf();
@@ -155,17 +153,17 @@ pub async fn get_session_steps(
         drop(guard);
         let recs = event_log::read_all(&log_path).map_err(|e| e.to_string())?;
         // Project: reuse the same projection used by render_to_file.
-        Ok(crate::document::render::project_steps_for_ui(&recs, &frames_dir))
+        Ok(crate::document::render::project_steps_for_ui(
+            &recs,
+            &frames_dir,
+        ))
     } else {
         Ok(vec![])
     }
 }
 
 #[tauri::command]
-pub async fn delete_step(
-    step_index: usize,
-    state: State<'_, SharedState>,
-) -> Result<(), String> {
+pub async fn delete_step(step_index: usize, state: State<'_, SharedState>) -> Result<(), String> {
     let guard = state.lock().await;
     if let Some(active) = &guard.active {
         active
@@ -303,9 +301,11 @@ pub async fn toggle_rule_pack(
         }
     } else {
         let canonical_str = canonical.to_string_lossy();
-        guard.config.rules.packs.retain(|p| {
-            p != &config_key && p != &file_name && p != canonical_str.as_ref()
-        });
+        guard
+            .config
+            .rules
+            .packs
+            .retain(|p| p != &config_key && p != &file_name && p != canonical_str.as_ref());
     }
 
     guard
@@ -400,9 +400,7 @@ pub async fn save_rule_pack(
 }
 
 #[tauri::command]
-pub async fn verify_session_chain(
-    state: State<'_, SharedState>,
-) -> Result<VerifyReport, String> {
+pub async fn verify_session_chain(state: State<'_, SharedState>) -> Result<VerifyReport, String> {
     let guard = state.lock().await;
     let active = guard.active.as_ref().ok_or("no active session")?;
     let log_path = active.log.path().to_path_buf();
@@ -535,11 +533,13 @@ pub async fn load_session(
     }
 
     // Open the log for appending (allows post-load edits/deletions).
-    let log = crate::events::log::EventLog::open_for_append(&log_path)
-        .map_err(|e| e.to_string())?;
+    let log =
+        crate::events::log::EventLog::open_for_append(&log_path).map_err(|e| e.to_string())?;
 
     let frames_dir = root.join("frames");
-    let session_id: uuid::Uuid = session_id_str.parse().map_err(|e: uuid::Error| e.to_string())?;
+    let session_id: uuid::Uuid = session_id_str
+        .parse()
+        .map_err(|e: uuid::Error| e.to_string())?;
 
     let meta = crate::state::Session {
         id: session_id,

@@ -124,14 +124,12 @@ fn build_docx(view: &DocumentView, spec: &DocxSpec, output_path: &Path) -> Resul
     // ── Cover page ──────────────────────────────────────────────────────────
     if spec.cover_page.show {
         docx = docx.add_paragraph(
-            Paragraph::new()
-                .align(AlignmentType::Center)
-                .add_run(
-                    Run::new()
-                        .add_text(view.title.clone())
-                        .size(spec.typography.title_size as usize)
-                        .bold(),
-                ),
+            Paragraph::new().align(AlignmentType::Center).add_run(
+                Run::new()
+                    .add_text(view.title.clone())
+                    .size(spec.typography.title_size as usize)
+                    .bold(),
+            ),
         );
 
         if spec.cover_page.show_author && !view.author.is_empty() {

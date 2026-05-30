@@ -90,8 +90,7 @@ impl RuleEngine {
 
     /// Load a pack from a JSON file on disk.
     pub fn load_pack_file(&mut self, path: &Path) -> Result<()> {
-        let bytes =
-            std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+        let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let pack: RulePack = serde_json::from_slice(&bytes)
             .with_context(|| format!("parsing {}", path.display()))?;
         self.load_pack(pack)
@@ -110,7 +109,8 @@ impl RuleEngine {
                 validator: r.validator.clone(),
             });
         }
-        self.pack_names.push(format!("{}@{}", pack.name, pack.version));
+        self.pack_names
+            .push(format!("{}@{}", pack.name, pack.version));
         Ok(())
     }
 
