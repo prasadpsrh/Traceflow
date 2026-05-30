@@ -194,7 +194,7 @@ mod platform {
         _id_thread: u32,
         _event_time: u32,
     ) {
-        if hwnd.is_null()  {
+        if hwnd.is_null() {
             return;
         }
 
