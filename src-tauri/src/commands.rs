@@ -592,3 +592,12 @@ pub async fn get_session_timeline(
     crate::replay::TimelineIndex::build(&log_path, &frames_dir)
         .map_err(|e| e.to_string())
 }
+
+
+use crate::rules::library::{wizard_library, WizardPreset};
+
+#[tauri::command]
+pub async fn rule_wizard_presets() -> Result<Vec<WizardPreset>, String> {
+    Ok(wizard_library())
+}
+

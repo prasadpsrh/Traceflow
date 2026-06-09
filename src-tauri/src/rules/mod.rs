@@ -12,3 +12,4 @@
 // Customers stack any combination via traceflow.config.toml.
 
 pub mod engine;
+pub mod library;
