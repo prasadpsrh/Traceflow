@@ -13,6 +13,7 @@ mod ocr;
 mod privacy;
 mod rules;
 mod state;
+mod replay;
 
 #[cfg(test)]
 mod integration_tests;
@@ -21,7 +22,13 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    
+    tracing_subscriber::fmt()
+    .with_env_filter(
+        tracing_subscriber::EnvFilter::from_default_env()
+            .add_directive("info".parse().unwrap()),
+    )
+    .init();
 
     let shared_state = Arc::new(Mutex::new(AppState::new()));
 
@@ -50,6 +57,8 @@ pub fn run() {
             commands::verify_session_chain,
             commands::list_sessions,
             commands::load_session,
+            commands::rule_wizard_presets,
+            commands::get_session_timeline,
         ])
         .setup(|app| {
             log::info!("Traceflow v{} starting", env!("CARGO_PKG_VERSION"));

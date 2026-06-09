@@ -17,6 +17,8 @@ use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use crate::replay::TimelineView;
+
 
 pub type SharedState = Arc<Mutex<AppState>>;
 
@@ -574,4 +576,19 @@ pub async fn load_session(
         step_count,
         root,
     })
+}
+
+/// Build and return the timeline index for the current session.
+/// Used by the Time Machine replay viewer.
+#[tauri::command]
+pub async fn get_session_timeline(
+    state: State<'_, SharedState>,
+) -> Result<TimelineView, String> {
+    let guard = state.lock().await;
+    let active = guard.active.as_ref().ok_or("no active session")?;
+    let log_path = active.log.path().to_path_buf();
+    let frames_dir = active.frames_dir.clone();
+    drop(guard);
+    crate::replay::TimelineIndex::build(&log_path, &frames_dir)
+        .map_err(|e| e.to_string())
 }

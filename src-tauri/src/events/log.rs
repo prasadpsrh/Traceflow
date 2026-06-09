@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use uuid::Uuid;
 
+
 /// Thread-safe handle to a session's NDJSON log.
 pub struct EventLog {
     path: PathBuf,

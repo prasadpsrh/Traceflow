@@ -772,3 +772,64 @@ body {
   color: var(--accent); background: rgba(195, 60, 31, 0.06);
   padding: 1px 5px; border-radius: 2px; margin-left: 4px;
 }
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   Sprint 2 — Time Machine replay viewer
+   ════════════════════════════════════════════════════════════════════════ */
+
+.replay-viewer { display: flex; flex-direction: column; height: 100%; }
+.replay-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 0 16px; border-bottom: 1px solid var(--rule); margin-bottom: 20px;
+}
+.replay-body {
+  display: grid; grid-template-columns: 1fr 320px;
+  gap: 24px; flex: 1; overflow: hidden;
+}
+.replay-frame-panel {
+  display: flex; flex-direction: column; gap: 12px; overflow-y: auto;
+}
+.replay-step-label {
+  font-family: var(--serif); font-size: 18px; font-weight: 500;
+  color: var(--ink);
+}
+.replay-frame {
+  width: 100%; border: 1px solid var(--rule); border-radius: 3px;
+  background: var(--paper-deep);
+}
+.replay-description {
+  font-size: 14px; line-height: 1.5; color: var(--ink);
+}
+.replay-scrubber { margin-top: 8px; }
+.replay-range {
+  width: 100%; accent-color: var(--accent);
+  height: 6px; cursor: pointer;
+}
+.replay-timestamps {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-mute); margin-top: 4px;
+}
+.replay-current-time { font-weight: 600; color: var(--accent); }
+.replay-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 8px;
+}
+
+.replay-events-panel {
+  border-left: 1px solid var(--rule); padding-left: 20px; overflow-y: auto;
+}
+.replay-event-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.replay-event-row {
+  padding: 8px 10px; border: 1px solid var(--rule); border-radius: 3px;
+  background: var(--paper);
+}
+.replay-event-kind {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.12em; color: var(--accent); margin-bottom: 2px;
+}
+.replay-event-summary { font-size: 12px; color: var(--ink); line-height: 1.4; }
+.replay-event-time {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-mute); margin-top: 4px;
+}

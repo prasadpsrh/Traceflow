@@ -678,3 +678,74 @@ fn light_image_no_title_gives_fallback() {
         "light screen fallback expected, got: {d}"
     );
 }
+
+
+// ═══ Cross-platform OCR tests ═══════════════════════════════════════════════
+
+use traceflow_lib::ocr::{create_provider, OcrProvider};
+
+#[test]
+fn ocr_provider_creates_without_panic() {
+    let provider = create_provider().expect("provider creation");
+    assert!(!provider.name().is_empty());
+}
+
+#[test]
+fn noop_provider_returns_empty() {
+    use traceflow_lib::ocr::noop_provider::NoopOcrProvider;
+    let noop = NoopOcrProvider;
+    let img = image::RgbaImage::new(100, 100);
+    let result = noop.recognize(&img).expect("noop recognize");
+    assert!(result.is_empty());
+}
+
+// NOTE: A full OCR accuracy test with synthetic text is valuable but
+// requires rendering text onto an image. Add when the `imageproc`
+// dependency supports `draw_text` with a bundled font.
+
+// ═══ Time Machine replay tests ══════════════════════════════════════════════
+
+use traceflow_lib::replay::TimelineIndex;
+
+#[test]
+fn timeline_builds_from_session() {
+    let sess = FakeSession::new("timeline test");
+    sess.add_step(0, &solid_rgba(100, 100, 100), Some("Window A"), None);
+    sess.add_step(1, &solid_rgba(200, 200, 200), Some("Window B"), None);
+    sess.add_ai_desc(0, "First step");
+    sess.add_ai_desc(1, "Second step");
+    sess.end();
+
+    let index = TimelineIndex::build(&sess.events_log(), &sess.frames_dir())
+        .expect("build timeline");
+    assert_eq!(index.entries.len(), 2);
+    assert_eq!(index.entries[0].description, "First step");
+    assert_eq!(index.entries[1].description, "Second step");
+    assert!(index.entries[0].timestamp_ms <= index.entries[1].timestamp_ms);
+}
+
+#[test]
+fn timeline_reflects_deletions() {
+    let sess = FakeSession::new("timeline delete");
+    sess.add_step(0, &solid_rgba(50, 50, 50), None, None);
+    sess.add_step(1, &solid_rgba(150, 150, 150), None, None);
+    sess.delete_step(0);
+    sess.end();
+
+    let index = TimelineIndex::build(&sess.events_log(), &sess.frames_dir())
+        .expect("build timeline");
+    assert_eq!(index.entries.len(), 1);
+    assert_eq!(index.entries[0].step_index, 1);
+}
+
+#[test]
+fn timeline_empty_session_is_valid() {
+    let sess = FakeSession::new("timeline empty");
+    sess.end();
+
+    let index = TimelineIndex::build(&sess.events_log(), &sess.frames_dir())
+        .expect("build timeline");
+    assert!(index.entries.is_empty());
+    assert_eq!(index.total_events, 2); // start + end
+}
+

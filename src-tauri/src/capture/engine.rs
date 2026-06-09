@@ -14,14 +14,19 @@ use crate::ai::describer;
 use crate::capture::{diff, monitor};
 use crate::commands::SharedState;
 use crate::events::EventKind;
+use crate::ocr::OcrProvider;
 use anyhow::{Context, Result};
 use image::{GrayImage, RgbaImage};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use tracing::{debug, info_span};
+
 
 pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> {
-    log::info!("capture loop started");
+    
+    tracing::info!("capture loop started");
 
     let (poll_fps, change_threshold, stability_frames, ai_on, ocr_on, keep_all, lang, monitor_idx) = {
         let guard = state.lock().await;
@@ -38,6 +43,16 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
         )
     };
 
+    // Create the OCR provider once — construction may be expensive (model loading).
+    // Arc because spawn_blocking needs 'static ownership but we reuse across frames.
+    let ocr_provider: Arc<dyn OcrProvider> = Arc::from(
+        crate::ocr::create_provider().unwrap_or_else(|e| {
+            tracing::warn!("OCR provider creation failed: {e}; redaction disabled");
+            Box::new(crate::ocr::noop_provider::NoopOcrProvider)
+        }),
+    );
+    tracing::info!("OCR provider: {}", ocr_provider.name());
+
     let tick = Duration::from_millis((1000 / poll_fps.max(1)) as u64);
 
     let mut reference: Option<GrayImage> = None;
@@ -46,36 +61,62 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
     let mut next_index: usize = 0;
 
     loop {
+        let tick_start = std::time::Instant::now();
+
         // Stop check
         {
             let guard = state.lock().await;
             if guard.capture_stop_flag || !guard.is_recording {
-                log::info!("capture loop stopping");
+                tracing::info!("capture loop stopping");
                 return Ok(());
             }
         }
 
-        let frame = match grab_frame(monitor_idx).await {
+        // ── Grab the current frame ────────────────────────────────────────
+        let frame = match {
+            let _span = info_span!("frame_grab", monitor = monitor_idx).entered();
+            grab_frame(monitor_idx).await
+        } {
             Ok(f) => f,
             Err(e) => {
-                log::warn!("frame grab failed: {e}");
-                tokio::time::sleep(tick).await;
+                tracing::warn!("frame grab failed: {e}");
+                let elapsed = tick_start.elapsed();
+            let sleep_dur = adaptive_sleep(elapsed, tick);
+        debug!(
+            elapsed_ms = elapsed.as_millis() as u64,
+            sleep_ms = sleep_dur.as_millis() as u64,
+            "tick timing"
+        );
+        tokio::time::sleep(sleep_dur).await;
                 continue;
             }
         };
-        let fp = diff::fingerprint(&frame);
 
-        // ── Establish reference on first frame ──────────────────────────────
+        // ── Fingerprint for change detection ──────────────────────────────
+        let fp = {
+            let _span = info_span!("fingerprint").entered();
+            diff::fingerprint(&frame)
+        };
+
+        // ── Establish reference on first frame ────────────────────────────
         if reference.is_none() {
             reference = Some(fp);
-            tokio::time::sleep(tick).await;
+            let elapsed = tick_start.elapsed();
+            let sleep_dur = adaptive_sleep(elapsed, tick);
+            debug!(
+            elapsed_ms = elapsed.as_millis() as u64,
+            sleep_ms = sleep_dur.as_millis() as u64,
+            "tick timing"
+            );
+            tokio::time::sleep(sleep_dur).await;
             continue;
         }
 
         if candidate.is_some() {
-            // ── Candidate exists: check stability ────────────────────────────
+            // ── Candidate exists: check stability ─────────────────────────
             // Scoped borrow so we can take ownership of `candidate` below.
             let score = {
+                let _span = info_span!("diff").entered();
                 let (cand_fp, _) = candidate.as_ref().unwrap();
                 diff::diff_score(cand_fp, &fp)
             };
@@ -93,6 +134,7 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
                         ai_on,
                         ocr_on,
                         &lang,
+                        &ocr_provider,
                     )
                     .await?;
                     next_index += 1;
@@ -112,21 +154,28 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
                     ai_on,
                     ocr_on,
                     &lang,
+                    &ocr_provider,
                 )
                 .await?;
                 next_index += 1;
                 reference = Some(old_fp);
 
                 // Is the brand-new frame already different from the just-set reference?
-                let new_score = diff::diff_score(reference.as_ref().unwrap(), &fp);
+                let new_score = {
+                    let _span = info_span!("diff").entered();
+                    diff::diff_score(reference.as_ref().unwrap(), &fp)
+                };
                 if new_score >= change_threshold {
                     candidate = Some((fp, frame));
                     stable_streak = 0;
                 }
             }
         } else {
-            // ── No candidate: compare new frame against reference ────────────
-            let score = diff::diff_score(reference.as_ref().unwrap(), &fp);
+            // ── No candidate: compare new frame against reference ─────────
+            let score = {
+                let _span = info_span!("diff").entered();
+                diff::diff_score(reference.as_ref().unwrap(), &fp)
+            };
             if score >= change_threshold {
                 candidate = Some((fp, frame));
                 stable_streak = 0;
@@ -160,7 +209,15 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
             }
         }
 
-        tokio::time::sleep(tick).await;
+        // ── Adaptive throttle ─────────────────────────────────────────────
+        let elapsed = tick_start.elapsed();
+        let sleep_dur = adaptive_sleep(elapsed, tick);
+        debug!(
+            elapsed_ms = elapsed.as_millis() as u64,
+            sleep_ms = sleep_dur.as_millis() as u64,
+            "tick timing"
+        );
+        tokio::time::sleep(sleep_dur).await;
     }
 }
 
@@ -178,6 +235,7 @@ async fn promote_step(
     ai_on: bool,
     ocr_on: bool,
     lang: &str,
+    ocr_provider: &Arc<dyn OcrProvider>,
 ) -> Result<()> {
     // ── 1. OCR + PII redaction ────────────────────────────────────────────
     // Must happen BEFORE encoding/hashing so the saved PNG is the redacted
@@ -190,10 +248,32 @@ async fn promote_step(
             let guard = state.lock().await;
             guard.rule_engine.clone()
         };
-        let lang_str = lang.to_string();
+        let provider = ocr_provider.clone();
 
         tokio::task::spawn_blocking(move || {
-            let text_regions = crate::ocr::run_ocr_with_text(&frame, &lang_str).unwrap_or_default();
+            let _span = info_span!("ocr_and_redact").entered();
+
+            // Use the provider trait instead of calling engine.rs directly.
+            let ocr_words = provider.recognize(&frame).unwrap_or_default();
+
+            // Convert OcrWords to the (String, OcrRegion) format the
+            // redaction pipeline expects.
+            let text_regions: Vec<(String, crate::events::event::OcrRegion)> = ocr_words
+                .into_iter()
+                .map(|w| {
+                    let text_hash = hex::encode(sha2::Sha256::digest(w.text.as_bytes()));
+                    (
+                        w.text,
+                        crate::events::event::OcrRegion {
+                            x: w.x,
+                            y: w.y,
+                            w: w.w,
+                            h: w.h,
+                            text_hash,
+                        },
+                    )
+                })
+                .collect();
 
             let mut redacted = frame;
             let hits = if let Some(engine) = &rule_engine {
@@ -213,14 +293,18 @@ async fn promote_step(
 
     // ── 2. Encode the (possibly redacted) frame ───────────────────────────
     let (w, h) = (frame.width(), frame.height());
-    let mut png_bytes: Vec<u8> = Vec::new();
-    {
-        let mut cursor = std::io::Cursor::new(&mut png_bytes);
-        frame
-            .write_to(&mut cursor, image::ImageFormat::Png)
-            .context("encoding PNG")?;
-    }
-    let frame_hash = hex::encode(Sha256::digest(&png_bytes));
+    let (png_bytes, frame_hash) = {
+        let _span = info_span!("encode_and_hash").entered();
+        let mut png_bytes: Vec<u8> = Vec::new();
+        {
+            let mut cursor = std::io::Cursor::new(&mut png_bytes);
+            frame
+                .write_to(&mut cursor, image::ImageFormat::Png)
+                .context("encoding PNG")?;
+        }
+        let hash = hex::encode(Sha256::digest(&png_bytes));
+        (png_bytes, hash)
+    };
 
     // ── 3. Persist to frames/{hash}.png (dedup-safe) ─────────────────────
     let (log, frames_dir) = {
@@ -233,6 +317,7 @@ async fn promote_step(
     };
     let frame_path = frames_dir.join(format!("{frame_hash}.png"));
     if !frame_path.exists() {
+        let _span = info_span!("write_frame").entered();
         std::fs::write(&frame_path, &png_bytes)
             .with_context(|| format!("writing {}", frame_path.display()))?;
     }
@@ -259,7 +344,8 @@ async fn promote_step(
 
     // ── 6. Emit RedactionApplied events ──────────────────────────────────
     // Group hits by rule name to produce one event per rule per step.
-    let mut by_rule: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut by_rule: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     for (rule_name, _) in &redaction_hits {
         *by_rule.entry(rule_name.clone()).or_default() += 1;
     }
@@ -295,8 +381,29 @@ async fn promote_step(
         "step_index": index,
     });
     let _ = app.emit("step-captured", payload);
-    log::info!("captured step #{index} ({frame_hash})");
+    tracing::info!("captured step #{index} ({frame_hash})");
     Ok(())
+}
+
+/// Adaptive throttle: if the capture tick took longer than the budget,
+/// increase the sleep to avoid starving the CPU. If it's well within
+/// budget, restore the configured rate.
+///
+/// Returns the duration to sleep before the next tick.
+fn adaptive_sleep(elapsed: Duration, base_tick: Duration) -> Duration {
+    let utilization = elapsed.as_secs_f64() / base_tick.as_secs_f64();
+
+    if utilization > 0.6 {
+        // CPU pressure — slow down. Scale linearly, cap at 4× base.
+        let scale = (utilization * 1.5).min(4.0);
+        Duration::from_secs_f64(base_tick.as_secs_f64() * scale)
+    } else if utilization < 0.4 {
+        // Headroom — restore base rate.
+        base_tick
+    } else {
+        // Comfortable zone — hold current.
+        base_tick
+    }
 }
 
 /// Returns (window_title, app_name) for the currently focused window.
@@ -307,6 +414,9 @@ async fn promote_step(
 /// Other platforms: falls back to the xcap heuristic (first non-minimised
 /// window with a non-empty title) until OS-specific APIs are wired in P2.
 #[cfg(target_os = "windows")]
+
+
+
 fn active_window_info() -> (Option<String>, Option<String>) {
     use windows_sys::Win32::Foundation::FALSE;
     use windows_sys::Win32::System::Threading::{
