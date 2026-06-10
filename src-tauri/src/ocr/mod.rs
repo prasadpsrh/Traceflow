@@ -13,7 +13,8 @@ pub mod ocrs_provider;
 #[cfg(target_os = "windows")]
 pub mod windows_provider;
 
-pub use provider::{OcrProvider, OcrWord};
+pub use provider::OcrProvider;
+pub(crate) use provider::OcrWord;
 
 use anyhow::Result;
 

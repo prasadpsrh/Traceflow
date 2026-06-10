@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tracing::{debug, info_span};
+use tracing::Instrument;
 
 
 pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> {
@@ -73,25 +74,25 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
         }
 
         // ── Grab the current frame ────────────────────────────────────────
-        let frame = match {
-            let _span = info_span!("frame_grab", monitor = monitor_idx).entered();
-            grab_frame(monitor_idx).await
-        } {
+
+        let frame = match grab_frame(monitor_idx)
+            .instrument(info_span!("frame_grab", monitor = monitor_idx))
+            .await
+        {
             Ok(f) => f,
             Err(e) => {
                 tracing::warn!("frame grab failed: {e}");
                 let elapsed = tick_start.elapsed();
-            let sleep_dur = adaptive_sleep(elapsed, tick);
-        debug!(
-            elapsed_ms = elapsed.as_millis() as u64,
-            sleep_ms = sleep_dur.as_millis() as u64,
-            "tick timing"
-        );
-        tokio::time::sleep(sleep_dur).await;
+                let sleep_dur = adaptive_sleep(elapsed, tick);
+                debug!(
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    sleep_ms = sleep_dur.as_millis() as u64,
+                    "tick timing"
+                );
+                tokio::time::sleep(sleep_dur).await;
                 continue;
             }
         };
-
         // ── Fingerprint for change detection ──────────────────────────────
         let fp = {
             let _span = info_span!("fingerprint").entered();

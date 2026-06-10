@@ -1,6 +1,6 @@
 //! Timeline index for session replay.
 
-use crate::events::{event::EventKind, log as event_log, EventRecord};
+use crate::events::{event::EventKind, log as event_log};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -168,7 +168,7 @@ fn event_kind_name(body: &EventKind) -> String {
         EventKind::OcrResult { .. } => "ocr_result",
         EventKind::RedactionApplied { .. } => "redaction_applied",
         EventKind::FrameSampled { .. } => "frame_sampled",
-        _ => "unknown",
+        
     }
     .to_string()
 }

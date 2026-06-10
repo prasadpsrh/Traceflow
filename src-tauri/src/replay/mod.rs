@@ -6,4 +6,4 @@
 
 pub mod timeline;
 
-pub use timeline::{TimelineEntry, TimelineIndex, TimelineView};
+pub use timeline::{TimelineIndex, TimelineView};
