@@ -112,6 +112,7 @@ export default function App() {
   };
 
   const handleStop = async () => {
+    console.log("handleStop called"); 
     try {
       await invoke("stop_capture");
       setRecording(false);

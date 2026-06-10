@@ -23,8 +23,8 @@ impl OcrsProvider {
     /// Create a new provider, loading the bundled ONNX models.
     /// This is expensive (~500ms) — call once at app startup, not per frame.
     pub fn new() -> Result<Self> {
-        let engine = OcrEngine::new(OcrEngineParams::default())
-            .context("loading ocrs ONNX models")?;
+        let engine =
+            OcrEngine::new(OcrEngineParams::default()).context("loading ocrs ONNX models")?;
         Ok(Self {
             engine: Arc::new(engine),
         })
@@ -47,15 +47,21 @@ impl OcrProvider for OcrsProvider {
         )
         .context("creating ocrs image source")?;
 
-        let ocr_input = self.engine.prepare_input(img_source)
+        let ocr_input = self
+            .engine
+            .prepare_input(img_source)
             .context("preparing ocrs input")?;
 
-        let word_rects = self.engine.detect_words(&ocr_input)
+        let word_rects = self
+            .engine
+            .detect_words(&ocr_input)
             .context("detecting words")?;
 
         let line_rects = self.engine.find_text_lines(&ocr_input, &word_rects);
 
-        let line_texts = self.engine.recognize_text(&ocr_input, &line_rects)
+        let line_texts = self
+            .engine
+            .recognize_text(&ocr_input, &line_rects)
             .context("recognizing text")?;
 
         let mut words = Vec::new();

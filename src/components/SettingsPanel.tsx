@@ -19,20 +19,26 @@ export default function SettingsPanel() {
 
   const refresh = async () => {
     try {
-      const [p, a, c, w] = await Promise.all([
-        invoke<PackSummary[]>("list_rule_packs"),
-        invoke<string[]>("rule_packs_active"),
-        invoke<RulePack>("custom_rules_get"),
-        invoke<WizardPreset[]>("rule_wizard_presets"),
-      ]);
-      setPacks(p);
-      setActive(a);
-      setCustomPack(c);
-      setPresets(w);
+        const p = await invoke<PackSummary[]>("list_rule_packs");
+        setPacks(p);
     } catch (e) {
-      console.error("Failed to load settings:", e);
+        console.error("list_rule_packs:", e);
     }
-  };
+
+    try {
+        const c = await invoke<RulePack>("custom_rules_get");
+        setCustomPack(c);
+    } catch (e) {
+        console.error("custom_rules_get:", e);
+    }
+
+    try {
+        const w = await invoke<WizardPreset[]>("rule_wizard_presets");
+        setPresets(w);
+    } catch (e) {
+        console.error("rule_wizard_presets:", e);
+    }
+};
 
   useEffect(() => {
     refresh();

@@ -3,9 +3,9 @@
 //! The public API is `create_provider()`, which returns a boxed
 //! `OcrProvider` appropriate for the current platform.
 
-pub mod provider;
 pub mod engine;
 pub mod noop_provider;
+pub mod provider;
 
 #[cfg(not(target_os = "windows"))]
 pub mod ocrs_provider;

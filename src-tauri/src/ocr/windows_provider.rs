@@ -24,7 +24,7 @@ impl OcrProvider for WindowsOcrProvider {
     fn recognize(&self, image: &RgbaImage) -> Result<Vec<OcrWord>> {
         // Delegate to your existing engine.rs functions.
         // Adapt the return type to Vec<OcrWord>.
-        let results = super::engine::run_ocr_with_text(image,"en")?;
+        let results = super::engine::run_ocr_with_text(image, "en")?;
         let words = results
             .into_iter()
             .map(|(text, region)| OcrWord {

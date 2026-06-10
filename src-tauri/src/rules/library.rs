@@ -90,10 +90,9 @@ fn walk_json(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn read_summary(path: &Path, is_builtin: bool) -> Result<PackSummary> {
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("reading {}", path.display()))?;
-    let pack: RulePack = serde_json::from_slice(&bytes)
-        .with_context(|| format!("parsing {}", path.display()))?;
+    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let pack: RulePack =
+        serde_json::from_slice(&bytes).with_context(|| format!("parsing {}", path.display()))?;
     let file_name = path
         .file_name()
         .and_then(|s| s.to_str())
@@ -121,16 +120,13 @@ pub fn load_custom(data_root: &Path) -> Result<RulePack> {
             description: "User-authored rules (managed through the Traceflow UI)".into(),
             rules: Vec::new(),
         };
-        let s = serde_json::to_string_pretty(&pack)
-            .context("serializing empty custom rules pack")?;
-        std::fs::write(&path, s)
-            .with_context(|| format!("writing {}", path.display()))?;
+        let s =
+            serde_json::to_string_pretty(&pack).context("serializing empty custom rules pack")?;
+        std::fs::write(&path, s).with_context(|| format!("writing {}", path.display()))?;
         return Ok(pack);
     }
-    let bytes = std::fs::read(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
-    serde_json::from_slice(&bytes)
-        .with_context(|| format!("parsing {}", path.display()))
+    let bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("parsing {}", path.display()))
 }
 
 /// Persist the user's custom-rules file.
@@ -168,10 +164,9 @@ pub fn remove_custom_rule(data_root: &Path, rule_name: &str) -> Result<RulePack>
 /// Import a user-authored pack from an external JSON file.
 /// Validates every pattern compiles before copying.
 pub fn import_pack(data_root: &Path, src: &Path) -> Result<PackSummary> {
-    let bytes = std::fs::read(src)
-        .with_context(|| format!("reading {}", src.display()))?;
-    let pack: RulePack = serde_json::from_slice(&bytes)
-        .context("the file is not a valid Traceflow rule pack")?;
+    let bytes = std::fs::read(src).with_context(|| format!("reading {}", src.display()))?;
+    let pack: RulePack =
+        serde_json::from_slice(&bytes).context("the file is not a valid Traceflow rule pack")?;
     for r in &pack.rules {
         regex::Regex::new(&r.pattern)
             .with_context(|| format!("rule '{}' has an invalid pattern", r.name))?;
@@ -189,20 +184,17 @@ pub fn import_pack(data_root: &Path, src: &Path) -> Result<PackSummary> {
         })
         .collect();
     let dest = user_dir(data_root).join(format!("{safe_name}.json"));
-    std::fs::write(&dest, &bytes)
-        .with_context(|| format!("writing {}", dest.display()))?;
+    std::fs::write(&dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
     read_summary(&dest, false)
 }
 
 /// Export a pack file to an arbitrary path (for sharing).
 pub fn export_pack(src: &Path, dest: &Path) -> Result<()> {
-    let bytes = std::fs::read(src)
-        .with_context(|| format!("reading {}", src.display()))?;
+    let bytes = std::fs::read(src).with_context(|| format!("reading {}", src.display()))?;
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    std::fs::write(dest, bytes)
-        .with_context(|| format!("writing {}", dest.display()))?;
+    std::fs::write(dest, bytes).with_context(|| format!("writing {}", dest.display()))?;
     Ok(())
 }
 
@@ -231,7 +223,9 @@ pub fn wizard_library() -> Vec<WizardPreset> {
             rule: Rule {
                 name: "wizard_email".into(),
                 pattern: r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b".into(),
-                action: RuleAction::Mask { replacement: "[EMAIL]".into() },
+                action: RuleAction::Mask {
+                    replacement: "[EMAIL]".into(),
+                },
                 description: "Email address".into(),
                 severity: "medium".into(),
                 validator: None,
@@ -246,7 +240,9 @@ pub fn wizard_library() -> Vec<WizardPreset> {
             rule: Rule {
                 name: "wizard_phone_us".into(),
                 pattern: r"\b(?:\+?1[-. ]?)?\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}\b".into(),
-                action: RuleAction::Mask { replacement: "[PHONE]".into() },
+                action: RuleAction::Mask {
+                    replacement: "[PHONE]".into(),
+                },
                 description: "US phone number".into(),
                 severity: "medium".into(),
                 validator: None,
@@ -331,12 +327,15 @@ pub fn wizard_library() -> Vec<WizardPreset> {
             id: "internal_ticket".into(),
             label: "Internal ticket / ID prefix".into(),
             category: "Custom".into(),
-            description: "Match identifiers like ACME-1234 or TKT-987654. Edit after adding.".into(),
+            description: "Match identifiers like ACME-1234 or TKT-987654. Edit after adding."
+                .into(),
             example_match: "ACME-1234".into(),
             rule: Rule {
                 name: "wizard_ticket_id".into(),
                 pattern: r"\b[A-Z]{2,5}-\d{3,}\b".into(),
-                action: RuleAction::Mask { replacement: "[TICKET]".into() },
+                action: RuleAction::Mask {
+                    replacement: "[TICKET]".into(),
+                },
                 description: "Internal ticket ID".into(),
                 severity: "low".into(),
                 validator: None,

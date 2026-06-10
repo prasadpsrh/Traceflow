@@ -11,9 +11,9 @@ mod document;
 mod events;
 mod ocr;
 mod privacy;
+mod replay;
 mod rules;
 mod state;
-mod replay;
 
 #[cfg(test)]
 mod integration_tests;
@@ -22,13 +22,12 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    
     tracing_subscriber::fmt()
-    .with_env_filter(
-        tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive("info".parse().unwrap()),
-    )
-    .init();
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("info".parse().unwrap()),
+        )
+        .init();
 
     let shared_state = Arc::new(Mutex::new(AppState::new()));
 

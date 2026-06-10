@@ -21,12 +21,10 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
-use tracing::{debug, info_span};
 use tracing::Instrument;
-
+use tracing::{debug, info_span};
 
 pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> {
-    
     tracing::info!("capture loop started");
 
     let (poll_fps, change_threshold, stability_frames, ai_on, ocr_on, keep_all, lang, monitor_idx) = {
@@ -46,12 +44,11 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
 
     // Create the OCR provider once — construction may be expensive (model loading).
     // Arc because spawn_blocking needs 'static ownership but we reuse across frames.
-    let ocr_provider: Arc<dyn OcrProvider> = Arc::from(
-        crate::ocr::create_provider().unwrap_or_else(|e| {
+    let ocr_provider: Arc<dyn OcrProvider> =
+        Arc::from(crate::ocr::create_provider().unwrap_or_else(|e| {
             tracing::warn!("OCR provider creation failed: {e}; redaction disabled");
             Box::new(crate::ocr::noop_provider::NoopOcrProvider)
-        }),
-    );
+        }));
     tracing::info!("OCR provider: {}", ocr_provider.name());
 
     let tick = Duration::from_millis((1000 / poll_fps.max(1)) as u64);
@@ -61,15 +58,20 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
     let mut stable_streak: u32 = 0;
     let mut next_index: usize = 0;
 
+    // Clone the atomic stop flag so we can check it without locking the mutex.
+    let stop_flag = {
+        let guard = state.lock().await;
+        guard.capture_stop_flag.clone()
+    };
+
     loop {
         let tick_start = std::time::Instant::now();
 
         // Stop check
         {
-            let guard = state.lock().await;
-            if guard.capture_stop_flag || !guard.is_recording {
-                tracing::info!("capture loop stopping");
-                return Ok(());
+            if stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            tracing::info!("capture loop stopping");
+            return Ok(());
             }
         }
 
@@ -105,9 +107,9 @@ pub async fn run_capture_loop(state: SharedState, app: AppHandle) -> Result<()> 
             let elapsed = tick_start.elapsed();
             let sleep_dur = adaptive_sleep(elapsed, tick);
             debug!(
-            elapsed_ms = elapsed.as_millis() as u64,
-            sleep_ms = sleep_dur.as_millis() as u64,
-            "tick timing"
+                elapsed_ms = elapsed.as_millis() as u64,
+                sleep_ms = sleep_dur.as_millis() as u64,
+                "tick timing"
             );
             tokio::time::sleep(sleep_dur).await;
             continue;
@@ -345,8 +347,7 @@ async fn promote_step(
 
     // ── 6. Emit RedactionApplied events ──────────────────────────────────
     // Group hits by rule name to produce one event per rule per step.
-    let mut by_rule: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut by_rule: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (rule_name, _) in &redaction_hits {
         *by_rule.entry(rule_name.clone()).or_default() += 1;
     }
@@ -415,8 +416,6 @@ fn adaptive_sleep(elapsed: Duration, base_tick: Duration) -> Duration {
 /// Other platforms: falls back to the xcap heuristic (first non-minimised
 /// window with a non-empty title) until OS-specific APIs are wired in P2.
 #[cfg(target_os = "windows")]
-
-
 
 fn active_window_info() -> (Option<String>, Option<String>) {
     use windows_sys::Win32::Foundation::FALSE;

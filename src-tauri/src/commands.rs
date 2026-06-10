@@ -8,6 +8,7 @@ use crate::capture::{engine, monitor};
 use crate::config::{CaptureCfg, ProjectConfig};
 use crate::document::{render_to_file, RenderRequest, StepView};
 use crate::events::{event::SessionPaths, log as event_log, EventKind, EventLog};
+use crate::replay::TimelineView;
 use crate::rules::engine::RulePack;
 use crate::state::{load_rule_engine, ActiveSession, AppState, Session};
 use serde::{Deserialize, Serialize};
@@ -17,7 +18,7 @@ use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use crate::replay::TimelineView;
+use std::sync::atomic::Ordering;
 
 
 pub type SharedState = Arc<Mutex<AppState>>;
@@ -79,7 +80,7 @@ pub async fn start_capture(
             frames_dir: paths.frames_dir,
             input_hook: Arc::new(std::sync::Mutex::new(None)),
         });
-        guard.capture_stop_flag = false;
+        guard.capture_stop_flag.store(false, Ordering::Relaxed);
         guard.is_recording = true;
         guard.step_count = 0;
         id
@@ -111,40 +112,36 @@ pub async fn start_capture(
 
 #[tauri::command]
 pub async fn stop_capture(state: State<'_, SharedState>) -> Result<Session, String> {
+    // Set the atomic flag FIRST — the capture loop will see it immediately
+    // without needing the mutex lock.
+    let stop_flag = {
+        let guard = state.lock().await;
+        guard.capture_stop_flag.clone()
+    };
+    stop_flag.store(true, Ordering::Relaxed);
+
+    // Brief pause to let the capture loop see the flag and release any locks.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Now safely acquire the lock for cleanup.
     let mut guard = state.lock().await;
-    guard.capture_stop_flag = true;
     guard.is_recording = false;
 
-    // Append SessionEnd — borrow ends before the mutable update below.
-    {
-        let active = guard
-            .active
-            .as_ref()
-            .ok_or_else(|| "no active session".to_string())?;
-        active
-            .log
-            .append(EventKind::SessionEnd {
-                reason: "user_stop".into(),
-            })
-            .map_err(|e| e.to_string())?;
-    }
-
-    // Stop input hooks.
     if let Some(active) = &guard.active {
-        if let Ok(mut slot) = active.input_hook.lock() {
-            if let Some(hook) = slot.take() {
-                hook.stop();
-            }
-        }
+        let _ = active.log.append(EventKind::SessionEnd {
+            reason: "user_stop".into(),
+        });
     }
 
-    // Stamp ended_at and return metadata.
-    // active stays in state so export/verify/edit keep working after stop.
+    let active = guard
+        .active
+        .as_mut()
+        .ok_or_else(|| "session disappeared during stop".to_string())?;
     let ended_at = chrono::Utc::now();
-    let active = guard.active.as_mut().unwrap();
     active.meta.ended_at = Some(ended_at);
     Ok(active.meta.clone())
 }
+
 
 #[tauri::command]
 pub async fn get_session_steps(state: State<'_, SharedState>) -> Result<Vec<StepView>, String> {
@@ -581,25 +578,20 @@ pub async fn load_session(
 /// Build and return the timeline index for the current session.
 /// Used by the Time Machine replay viewer.
 #[tauri::command]
-pub async fn get_session_timeline(
-    state: State<'_, SharedState>,
-) -> Result<TimelineView, String> {
+pub async fn get_session_timeline(state: State<'_, SharedState>) -> Result<TimelineView, String> {
     let guard = state.lock().await;
     let active = guard.active.as_ref().ok_or("no active session")?;
     let log_path = active.log.path().to_path_buf();
     let frames_dir = active.frames_dir.clone();
     drop(guard);
-    crate::replay::TimelineIndex::build(&log_path, &frames_dir)
-        .map_err(|e| e.to_string())
+    crate::replay::TimelineIndex::build(&log_path, &frames_dir).map_err(|e| e.to_string())
 }
 
-
-use crate::rules::library::{
-    add_custom_rule, export_pack as lib_export_pack, import_pack as lib_import_pack,
-    list_all, load_custom, remove_custom_rule, wizard_library,
-    PackSummary, WizardPreset,
-};
 use crate::rules::engine::Rule;
+use crate::rules::library::{
+    add_custom_rule, export_pack as lib_export_pack, import_pack as lib_import_pack, list_all,
+    load_custom, remove_custom_rule, wizard_library, PackSummary, WizardPreset,
+};
 
 #[tauri::command]
 pub async fn rule_wizard_presets() -> Result<Vec<WizardPreset>, String> {

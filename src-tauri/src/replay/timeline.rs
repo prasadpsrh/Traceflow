@@ -121,8 +121,7 @@ impl TimelineIndex {
 
             entries.push(TimelineEntry {
                 timestamp_ms: *ts_ms,
-                timestamp: DateTime::from_timestamp_millis(*ts_ms)
-                    .unwrap_or_default(),
+                timestamp: DateTime::from_timestamp_millis(*ts_ms).unwrap_or_default(),
                 step_index: *step_index,
                 frame_path: frame_path.clone(),
                 frame_hash: frame_hash.clone(),
@@ -168,7 +167,6 @@ fn event_kind_name(body: &EventKind) -> String {
         EventKind::OcrResult { .. } => "ocr_result",
         EventKind::RedactionApplied { .. } => "redaction_applied",
         EventKind::FrameSampled { .. } => "frame_sampled",
-        
     }
     .to_string()
 }
@@ -186,7 +184,10 @@ fn event_summary(body: &EventKind) -> String {
         }
         EventKind::StepDeleted { step_index } => format!("Step {} deleted", step_index + 1),
         EventKind::WindowFocusChanged { window_title, .. } => {
-            format!("Window focus: {}", window_title.as_deref().unwrap_or("unknown"))
+            format!(
+                "Window focus: {}",
+                window_title.as_deref().unwrap_or("unknown")
+            )
         }
         EventKind::MouseClick { x, y, button, .. } => format!("Click {button} at ({x}, {y})"),
         EventKind::OcrResult { frame_hash, .. } => {

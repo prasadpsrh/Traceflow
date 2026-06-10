@@ -679,7 +679,6 @@ fn light_image_no_title_gives_fallback() {
     );
 }
 
-
 // ═══ Cross-platform OCR tests ═══════════════════════════════════════════════
 
 use crate::ocr::{create_provider, OcrProvider};
@@ -716,8 +715,8 @@ fn timeline_builds_from_session() {
     sess.add_ai_desc(1, "Second step");
     sess.end();
 
-    let index = TimelineIndex::build(&sess.events_log(), &sess.frames_dir())
-        .expect("build timeline");
+    let index =
+        TimelineIndex::build(&sess.events_log(), &sess.frames_dir()).expect("build timeline");
     assert_eq!(index.entries.len(), 2);
     assert_eq!(index.entries[0].description, "First step");
     assert_eq!(index.entries[1].description, "Second step");
@@ -732,8 +731,8 @@ fn timeline_reflects_deletions() {
     sess.delete_step(0);
     sess.end();
 
-    let index = TimelineIndex::build(&sess.events_log(), &sess.frames_dir())
-        .expect("build timeline");
+    let index =
+        TimelineIndex::build(&sess.events_log(), &sess.frames_dir()).expect("build timeline");
     assert_eq!(index.entries.len(), 1);
     assert_eq!(index.entries[0].step_index, 1);
 }
@@ -743,9 +742,8 @@ fn timeline_empty_session_is_valid() {
     let sess = FakeSession::new("timeline empty");
     sess.end();
 
-    let index = TimelineIndex::build(&sess.events_log(), &sess.frames_dir())
-        .expect("build timeline");
+    let index =
+        TimelineIndex::build(&sess.events_log(), &sess.frames_dir()).expect("build timeline");
     assert!(index.entries.is_empty());
     assert_eq!(index.total_events, 2); // start + end
 }
-

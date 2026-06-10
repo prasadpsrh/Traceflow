@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 
 /// A capture session — one run of "Record → Stop".
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +54,7 @@ pub struct AppState {
     /// Distinct from `active.is_some()` so we can query post-stop sessions.
     pub is_recording: bool,
     /// Set to true to ask the capture loop to exit on its next tick.
-    pub capture_stop_flag: bool,
+    pub capture_stop_flag: Arc<AtomicBool>,
     /// Cached step count so the UI status bar can show it cheaply.
     pub step_count: usize,
     /// Compiled rule engine loaded from config.rules.packs at startup.
@@ -72,7 +74,7 @@ impl AppState {
             config,
             active: None,
             is_recording: false,
-            capture_stop_flag: false,
+            capture_stop_flag: Arc::new(AtomicBool::new(false)),
             step_count: 0,
             rule_engine,
         }
