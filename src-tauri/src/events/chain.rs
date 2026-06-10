@@ -73,13 +73,23 @@ impl ChainHasher {
 /// Verify a chain: returns Ok(count) if the chain is intact,
 /// Err with the first bad seq number otherwise.
 pub fn verify_chain<'a, I: IntoIterator<Item = &'a EventRecord>>(records: I) -> Result<u64> {
-    let _expected_prev = ZERO_HASH.to_string();
+    let mut expected_prev = ZERO_HASH.to_string();
     let mut count = 0u64;
     for (expected_seq, r) in (0_u64..).zip(records) {
         if r.seq != expected_seq {
             anyhow::bail!("sequence gap at seq={} (expected {})", r.seq, expected_seq);
         }
-        // ... existing body (everything between the `if` and the increments) ...
+        if r.prev != expected_prev {
+            anyhow::bail!("broken prev link at seq={}", r.seq);
+        }
+        let canonical = canonical_bytes_excluding_hash(r)?;
+        let mut h = Sha256::new();
+        h.update(&canonical);
+        let digest = hex::encode(h.finalize());
+        if digest != r.hash {
+            anyhow::bail!("hash mismatch at seq={}", r.seq);
+        }
+        expected_prev = r.hash.clone();
         count += 1;
     }
     Ok(count)

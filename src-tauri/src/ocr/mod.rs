@@ -14,7 +14,6 @@ pub mod ocrs_provider;
 pub mod windows_provider;
 
 pub use provider::OcrProvider;
-pub(crate) use provider::OcrWord;
 
 use anyhow::Result;
 

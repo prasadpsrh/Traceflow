@@ -682,7 +682,7 @@ fn light_image_no_title_gives_fallback() {
 
 // ═══ Cross-platform OCR tests ═══════════════════════════════════════════════
 
-use traceflow_lib::ocr::{create_provider, OcrProvider};
+use crate::ocr::{create_provider, OcrProvider};
 
 #[test]
 fn ocr_provider_creates_without_panic() {
@@ -692,7 +692,7 @@ fn ocr_provider_creates_without_panic() {
 
 #[test]
 fn noop_provider_returns_empty() {
-    use traceflow_lib::ocr::noop_provider::NoopOcrProvider;
+    use crate::ocr::noop_provider::NoopOcrProvider;
     let noop = NoopOcrProvider;
     let img = image::RgbaImage::new(100, 100);
     let result = noop.recognize(&img).expect("noop recognize");
@@ -705,7 +705,7 @@ fn noop_provider_returns_empty() {
 
 // ═══ Time Machine replay tests ══════════════════════════════════════════════
 
-use traceflow_lib::replay::TimelineIndex;
+use crate::replay::TimelineIndex;
 
 #[test]
 fn timeline_builds_from_session() {

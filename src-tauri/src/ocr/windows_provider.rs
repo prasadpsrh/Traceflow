@@ -33,7 +33,7 @@ impl OcrProvider for WindowsOcrProvider {
                 y: region.y,
                 w: region.w,
                 h: region.h,
-                confidence: region.confidence.unwrap_or(0.95),
+                confidence: 0.95,
             })
             .collect();
         Ok(words)

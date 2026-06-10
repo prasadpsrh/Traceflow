@@ -594,10 +594,90 @@ pub async fn get_session_timeline(
 }
 
 
-use crate::rules::library::{wizard_library, WizardPreset};
+use crate::rules::library::{
+    add_custom_rule, export_pack as lib_export_pack, import_pack as lib_import_pack,
+    list_all, load_custom, remove_custom_rule, wizard_library,
+    PackSummary, WizardPreset,
+};
+use crate::rules::engine::Rule;
 
 #[tauri::command]
 pub async fn rule_wizard_presets() -> Result<Vec<WizardPreset>, String> {
     Ok(wizard_library())
 }
 
+#[derive(Debug, Serialize)]
+pub struct MatchSpan {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PatternTestResult {
+    pub valid: bool,
+    pub error: Option<String>,
+    pub match_count: usize,
+    pub matches: Vec<MatchSpan>,
+}
+
+#[tauri::command]
+pub async fn rule_pattern_test(
+    pattern: String,
+    sample: String,
+) -> Result<PatternTestResult, String> {
+    match regex::Regex::new(&pattern) {
+        Ok(re) => {
+            let matches: Vec<MatchSpan> = re
+                .find_iter(&sample)
+                .map(|m| MatchSpan {
+                    start: m.start(),
+                    end: m.end(),
+                    text: m.as_str().to_string(),
+                })
+                .collect();
+            Ok(PatternTestResult {
+                valid: true,
+                error: None,
+                match_count: matches.len(),
+                matches,
+            })
+        }
+        Err(e) => Ok(PatternTestResult {
+            valid: false,
+            error: Some(e.to_string()),
+            match_count: 0,
+            matches: vec![],
+        }),
+    }
+}
+
+#[tauri::command]
+pub async fn custom_rule_add(rule: Rule) -> Result<RulePack, String> {
+    add_custom_rule(&AppState::data_root(), rule).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn custom_rule_remove(rule_name: String) -> Result<RulePack, String> {
+    remove_custom_rule(&AppState::data_root(), &rule_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn custom_rules_get() -> Result<RulePack, String> {
+    load_custom(&AppState::data_root()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rule_pack_import(src_path: PathBuf) -> Result<PackSummary, String> {
+    lib_import_pack(&AppState::data_root(), &src_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rule_pack_export(file_name: String, dest_path: PathBuf) -> Result<(), String> {
+    let summaries = list_all(&AppState::data_root()).map_err(|e| e.to_string())?;
+    let summary = summaries
+        .into_iter()
+        .find(|p| p.file_name == file_name)
+        .ok_or_else(|| format!("pack '{file_name}' not found"))?;
+    lib_export_pack(&summary.path, &dest_path).map_err(|e| e.to_string())
+}

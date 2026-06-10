@@ -59,6 +59,13 @@ pub fn run() {
             commands::load_session,
             commands::rule_wizard_presets,
             commands::get_session_timeline,
+            commands::rule_wizard_presets,
+            commands::rule_pattern_test,
+            commands::custom_rule_add,
+            commands::custom_rule_remove,
+            commands::custom_rules_get,
+            commands::rule_pack_import,
+            commands::rule_pack_export,
         ])
         .setup(|app| {
             log::info!("Traceflow v{} starting", env!("CARGO_PKG_VERSION"));
